@@ -2,24 +2,24 @@ import asyncio
 import ipaddress
 import re
 import socket
-from datetime import datetime, timedelta
+
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from fastapi import APIRouter
+
+
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api.auth import get_current_user
+
 from audit_engine.browser_fetcher import browser_scan
 from audit_engine.url_security import UnsafeURLError, validate_public_url
 from audit_engine.orchestrator import run_audit
-from audit_engine.credit_rules import should_consume_scan_credit, get_evidence_count, get_weekly_limit
-from db.database import get_db, PERSISTENT_DATABASE_CONFIGURED
-from db.models import User, Scan
+from audit_engine.credit_rules import get_evidence_count
+
+
 
 
 router = APIRouter(prefix="/api/audit", tags=["Audit"])
@@ -34,10 +34,7 @@ OUTER_TIMEOUT_S    = 90.0     # segundos para asyncio.wait_for
 
 class AuditRequest(BaseModel):
     url: str
-    plan: Optional[str] = "free"
-    is_admin: Optional[bool] = False  # frontend envia True para admin (double-verify)
-    view_source: Optional[bool] = False
-
+    view_source: Optional[bool] = True
 
 def _friendly_message(code: str) -> str:
     messages = {
