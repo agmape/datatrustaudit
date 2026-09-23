@@ -429,17 +429,17 @@ export class FileAnalysisService {
         criticalCount++;
         violations.push({
           script: script.name,
-          violation: 'Coleta de dados antes do consentimento',
+          violation: 'Indicador técnico: script aparece antes de um sinal textual de consentimento',
           severity: 'critical',
-          article: 'Art. 7º e 8º LGPD'
+          article: 'Contexto LGPD Arts. 6º/7º — requer verificação de base legal'
         });
       } else if (script.violationLevel === 'high') {
         highCount++;
         violations.push({
           script: script.name,
-          violation: 'Dados sensíveis sem base legal adequada',
+          violation: 'Indicador heurístico: padrão associado a dado sensível requer revisão manual',
           severity: 'high',
-          article: 'Art. 11 LGPD'
+          article: 'Contexto LGPD Art. 11 — não é possível determinar a base legal pelo arquivo'
         });
       }
     });
@@ -463,7 +463,7 @@ export class FileAnalysisService {
     const mainIssues: string[] = [];
     if (duplicates.length > 0) mainIssues.push(`${duplicates.length} duplicatas detectadas`);
     if (!compliance.consentDetected) mainIssues.push('Sistema de consentimento ausente');
-    if (violationCount > 0) mainIssues.push(`${violationCount} violações de LGPD`);
+    if (violationCount > 0) mainIssues.push(`${violationCount} indicadores técnicos de privacidade`);
 
     return {
       totalScripts: scripts.length,
@@ -570,10 +570,7 @@ export class FileAnalysisService {
     return issues;
   }
 
-  private calculateEstimatedFine(criticalCount: number, highCount: number): string {
-    const baseFine = (criticalCount * 15000) + (highCount * 5000);
-    const minFine = Math.max(2000, baseFine * 0.7);
-    const maxFine = baseFine * 1.5;
-    return `R$ ${minFine.toLocaleString('pt-BR')} - R$ ${maxFine.toLocaleString('pt-BR')}`;
+  private calculateEstimatedFine(_criticalCount: number, _highCount: number): string {
+    return 'Não estimável por análise técnica: sanções dependem de contexto jurídico e fatos não observáveis.';
   }
 }
