@@ -157,17 +157,35 @@ def audit_consent(html: str, tags_before_consent_names: Optional[List[str]] = No
     result.cmp_detected = cmp_name is not None
     result.cmp_name = cmp_name
 
+    # Runtime browser globals can reveal dynamically loaded CMPs that are absent
+    # from the initial HTML. These are observable technical signals only.
+    runtime_signals = getattr(scan, "consent_signals", {}) if scan is not None else {}
+    if isinstance(runtime_signals, dict) and not result.cmp_detected:
+        if runtime_signals.get("cookiebotStatus") is not None:
+            result.cmp_detected = True
+            result.cmp_name = "Cookiebot (runtime signal)"
+        elif runtime_signals.get("oneTrustLoaded"):
+            result.cmp_detected = True
+            result.cmp_name = "OneTrust (runtime signal)"
+        elif runtime_signals.get("didomiLoaded"):
+            result.cmp_detected = True
+            result.cmp_name = "Didomi (runtime signal)"
+        elif runtime_signals.get("hasTcf") or runtime_signals.get("hasCmp"):
+            result.cmp_detected = True
+            result.cmp_name = "Consent API detected at runtime"
+
     result.findings.append(ConsentFinding(
         check="cmp_present" if result.cmp_detected else "cmp_missing",
         label="Consent Management Platform (CMP)",
-        status="ok" if result.cmp_detected else "critical",
+        status="ok" if result.cmp_detected else "warning",
         description=(
-            f"{cmp_name} detected — a consent management platform is in place."
+            f"{result.cmp_name} detected — a consent management mechanism is observable."
             if result.cmp_detected else
-            "No CMP detected. Under most privacy regulations, tracking scripts "
-            "must not fire before the user consents."
+            "No known CMP was observed in HTML or runtime signals. This is a technical "
+            "observation, not proof of legal non-compliance; lawful basis and any custom "
+            "consent mechanism require manual verification."
         ),
-        evidence=cmp_name,
+        evidence=result.cmp_name,
         confidence=CONFIDENCE_HIGH if result.cmp_detected else CONFIDENCE_HIGH,
     ))
 
@@ -266,15 +284,14 @@ def audit_consent(html: str, tags_before_consent_names: Optional[List[str]] = No
             confidence=CONFIDENCE_LOW,
         ))
     else:
-        result.has_reject_all = False
+        result.has_reject_all = None
         result.findings.append(ConsentFinding(
-            check="reject_all_missing",
+            check="reject_all_unverifiable",
             label="Reject-All Option",
-            status="critical",
-            description="No reject-all option detected, and no CMP was found. "
-                        "Under GDPR and similar laws, users must be able to decline non-essential cookies "
-                        "as easily as they can accept them.",
-            confidence=CONFIDENCE_MEDIUM,
+            status="not_detected",
+            description="No CMP or reject-all control was observable. The scanner cannot determine "
+                        "whether a lawful basis, custom consent UI, or another opt-out mechanism exists.",
+            confidence=CONFIDENCE_LOW,
         ))
 
     # ── Privacy & Cookie policy links ─────────────────────────────────────────
@@ -314,8 +331,8 @@ def audit_consent(html: str, tags_before_consent_names: Optional[List[str]] = No
         result.findings.append(ConsentFinding(
             check="tags_before_consent",
             label="Tracking Before Consent",
-            status="critical",
-            description=f"{len(result.tags_before_consent)} tracking tag(s) appear to load before any consent signal: "
+            status="warning",
+            description=f"{len(result.tags_before_consent)} tracking tag(s) appear to load before an observable consent signal: "
                         f"{', '.join(result.tags_before_consent[:5])}" +
                         (f" (+{len(result.tags_before_consent)-5} more)" if len(result.tags_before_consent) > 5 else ""),
             confidence=CONFIDENCE_MEDIUM,
