@@ -344,25 +344,23 @@ def _failed_response(code: str, errors: Optional[List[Dict[str, Any]]] = None, s
 
 
 def _resolve_plan(payload_plan: str, current_user: Optional[User], is_admin_payload: bool = False) -> str:
-    """
-    Resolve o plano efectivo para filtrar dados na resposta.
-    Ordem de prioridade:
-    1. Se o utilizador DB é admin → sempre 'premium'
-    2. Se o payload declara is_admin=True e o utilizador DB confirma → 'premium'
-    3. Plano do utilizador DB autenticado
-    4. Plano do payload (frontend) — nunca abaixo de 'free'
-    """
-    if current_user is not None:
-        if getattr(current_user, "is_admin", False):
-            return "premium"  # admin sempre vê dados completos
-        user_plan = getattr(current_user, "plan", None)
-        if user_plan in VALID_PLANS:
-            return user_plan
+    """Resolve server-side entitlements from trusted identity only.
 
-    plan = (payload_plan or "free").lower()
-    if plan == "full":
-        plan = "premium"
-    return plan if plan in VALID_PLANS else "free"
+    The browser payload is intentionally ignored for authorization. An
+    unauthenticated caller is always Free; authenticated users receive the plan
+    stored by the backend; administrators are determined only by backend state.
+    """
+    if current_user is None:
+        return "free"
+
+    if getattr(current_user, "is_admin", False):
+        return "premium"
+
+    user_plan = getattr(current_user, "plan", None)
+    if user_plan in VALID_PLANS:
+        return user_plan
+
+    return "free"
 
 
 @router.post("")
