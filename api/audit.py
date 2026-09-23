@@ -186,12 +186,8 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
     if score is None:
         score = 70 if tags else 50
 
-    analytics_cookies = [
-        "_ga", "_gid", "_gat", "_gcl_au",
-    ] if ga4_ids or any("google-analytics" in str(s) for s in getattr(scan, "all_script_urls", [])) else []
-    marketing_cookies = [
-        "_fbp", "_fbc", "fr",
-    ] if any((isinstance(tag, dict) and tag.get("type") in {"advertising", "marketing"}) for tag in tags) else []
+    # Cookie names must come from browser evidence, never from vendor assumptions.
+    observed_cookies = sorted(list((getattr(scan, "cookies", {}) or {}).keys()))
 
     limit_note = None
     visible_tags = tags
@@ -237,15 +233,20 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
             "hasUniversalAnalytics": bool(privacy.get("hasUniversalAnalytics")) if isinstance(privacy, dict) else False,
             "estimatedRiskExposure": privacy.get("estimatedRiskExposure") if isinstance(privacy, dict) else None,
             "complianceScore": privacy.get("complianceScore") if isinstance(privacy, dict) else None,
+            "scoreBasis": privacy.get("scoreBasis") if isinstance(privacy, dict) else None,
+            "scoreDeductions": privacy.get("scoreDeductions", []) if isinstance(privacy, dict) else [],
             "gdprRisk": _risk_from_privacy(privacy, "GDPR"),
             "lgpdRisk": _risk_from_privacy(privacy, "LGPD"),
-            "cookieConsentDetected": bool(consent.get("hasCookiePolicy") or consent.get("cmpDetected")) if isinstance(consent, dict) else None,
+            "cookieConsentDetected": bool(consent.get("cmpDetected")) if isinstance(consent, dict) else None,
             "cmpDetected": bool(consent.get("cmpDetected") or privacy.get("hasConsentTool")) if isinstance(consent, dict) else None,
             "cmpName": consent.get("cmpName") if isinstance(consent, dict) else None,
             "consentModeDetected": bool(consent.get("consentModeV2")) if isinstance(consent, dict) else None,
             "tagsBeforeConsent": consent.get("tagsBeforeConsent", []) if isinstance(consent, dict) else [],
-            "analyticsCookies": analytics_cookies,
-            "marketingCookies": marketing_cookies,
+            "observedCookies": observed_cookies,
+            "cookieObservationNote": (
+                "Cookie names are reported only when observed in the browser context. "
+                "The scanner does not infer cookie presence from a vendor tag."
+            ),
             "manualVerification": [
                 "Data retention, GA4 reporting identity, custom dimensions, server-side tagging, and authenticated funnels need manual verification.",
             ],
@@ -288,6 +289,24 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
         "sensitiveDataFindings": sensitive_data_findings_raw,
         "regulatoryExposure": regulatory_exposure_raw,
         # Scan metadata
+        "scan_id": __import__("uuid").uuid4().hex,
+        "observability": {
+            "scan_method": audit.get("scan_method") or getattr(scan, "scan_method", "html_fallback"),
+            "browser_success": not bool(getattr(scan, "fallback_used", False)),
+            "static_fallback": bool(getattr(scan, "static_fallback_attempted", False) or getattr(scan, "fallback_used", False)),
+            "pages_scanned": 1,
+            "requests_intercepted": len(getattr(scan, "intercepted_requests", []) or []),
+            "scripts_detected": len(getattr(scan, "all_script_urls", []) or []),
+            "findings_count": (
+                len(tags) + len(privacy_violations or []) + len(personal_data_findings_raw)
+                + len(sensitive_data_findings_raw) + len(recommendations)
+            ),
+            "errors": list(getattr(scan, "errors", []) or []) + ([str(getattr(scan, "error", ""))] if getattr(scan, "error", None) else []),
+            "warnings": list(getattr(scan, "warnings", []) or []),
+            "duration_ms": getattr(scan, "load_time_ms", None),
+            "started_at": getattr(scan, "started_at", None),
+            "finished_at": getattr(scan, "finished_at", None),
+        },
         "scan_status": getattr(scan, "scan_status", "completed") if not getattr(scan, "error", None) else getattr(scan, "scan_status", "partial"),
         "failure_reason": getattr(scan, "failure_reason", None),
         "browser_attempts": getattr(scan, "browser_attempts", 1),
