@@ -145,7 +145,7 @@ def _build_debugging(scan: Any, audit: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any) -> Dict[str, Any]:
+def _normalize_audit_response(url: str, scan: Any, audit_result: Any) -> Dict[str, Any]:
     audit = _safe_dict(audit_result) or {}
     tags = audit.get("tags") or []
     events = audit.get("events") or {}
@@ -334,10 +334,6 @@ def _failed_response(code: str, errors: Optional[List[Dict[str, Any]]] = None, s
     )
 
 
-def _resolve_plan(payload_plan: str, current_user: Optional[User], is_admin_payload: bool = False) -> str:
-    """Backward-compatible internal switch: all callers receive full access."""
-    return "premium"
-
 def _finalize_scan_record(db: Session, record: Optional[Scan], status: str, response: Optional[dict] = None) -> None:
     if record is None:
         return
@@ -371,12 +367,7 @@ async def run_direct_audit(
         return _failed_response("INVALID_URL", status_code=400)
 
     # ── 2. Public full-access mode ───────────────────────────────────────────
-    # No login, subscription, quota, plan or database persistence is required
-    # to run an audit. The internal "premium" value is kept only as a backwards-
-    # compatible switch so existing analyzers expose every available finding.
-    plan = "premium"
-    is_admin = False
-    scan_record: Optional[Scan] = None
+    # No login, subscription, quota, plan or database persistence is required.
 
     # ── 3. Browser scan with graceful degradation ─────────────────────────────
     scan = None
@@ -399,25 +390,21 @@ async def run_direct_audit(
                 "O site demorou mais de 90s. Resultados baseados em fallback estático (sem JS/runtime)."
             )
         except Exception as fb_exc:
-            _finalize_scan_record(db, scan_record, "failed")
             return _failed_response("TIMEOUT", [{
                 "message": f"Timeout de 90s e fallback estático também falhou: {fb_exc}"
             }])
 
     except UnsafeURLError as exc:
-        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("INVALID_URL", [{"message": str(exc)}], status_code=400)
     except (socket.gaierror, OSError) as exc:
-        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
     except Exception as exc:
-        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
 
     # ── 4. Motor de auditoria ─────────────────────────────────────────────────
     try:
-        audit_result = run_audit(url, scan, use_view_source=(plan == "premium"))
-        response = _normalize_audit_response(url, plan, scan, audit_result)
+        audit_result = run_audit(url, scan, use_view_source=True)
+        response = _normalize_audit_response(url, scan, audit_result)
 
         # ── 5. Enriquece resposta com flags de scan parcial ──────────────────
         is_partial = getattr(scan, "partial_scan", False)
@@ -450,14 +437,8 @@ async def run_direct_audit(
                 else:
                     response["errorCode"] = "FETCH_FAILED"
                     response["message"] = _friendly_message("FETCH_FAILED")
-
-        if scan_record is not None:
-            response["scan_id"] = str(scan_record.id)
-        final_status = "completed" if response.get("status") == "completed" else response.get("status", "partial")
-        _finalize_scan_record(db, scan_record, final_status, response)
         return JSONResponse(response)
 
     except Exception as exc:
         print(f"[api/audit] Erro no motor de auditoria: {exc}")
-        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
