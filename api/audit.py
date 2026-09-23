@@ -18,7 +18,7 @@ from audit_engine.browser_fetcher import browser_scan
 from audit_engine.url_security import UnsafeURLError, validate_public_url
 from audit_engine.orchestrator import run_audit
 from audit_engine.credit_rules import should_consume_scan_credit, get_evidence_count, get_weekly_limit
-from db.database import get_db
+from db.database import get_db, PERSISTENT_DATABASE_CONFIGURED
 from db.models import User, Scan
 
 
@@ -406,6 +406,17 @@ async def run_direct_audit(
         return JSONResponse(
             {"success": False, "status": "failed", "errorCode": "AUTH_REQUIRED", "message": "Authentication required to run a scan."},
             status_code=401,
+        )
+
+    if os.getenv("VERCEL") and not PERSISTENT_DATABASE_CONFIGURED:
+        return JSONResponse(
+            {
+                "success": False,
+                "status": "failed",
+                "errorCode": "DATABASE_REQUIRED",
+                "message": "Configure a persistent PostgreSQL DATABASE_URL before enabling production scans.",
+            },
+            status_code=503,
         )
 
     plan = _resolve_plan(
