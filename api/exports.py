@@ -12,7 +12,7 @@ from api.auth import get_current_user
 router = APIRouter(prefix="/api/exports", tags=["Exports"])
 
 @router.get("/xlsx/{scan_id}")
-def export_scan_xlsx(scan_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def export_scan_xlsx(scan_id: int, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Exports Scan findings to XLSX. Available only for Pro/Premium."""
     # Enforce Plan validation
     sub = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
@@ -32,7 +32,7 @@ def export_scan_xlsx(scan_id: int, current_user: User = Depends(get_current_user
     ws1.title = "Resumo do Scan"
     ws1.append(["URL Auditada:", scan.url])
     ws1.append(["Data do Scan:", str(scan.completed_at)])
-    ws1.append(["Score de Conformidade:", f"{scan.score}/100"])
+    ws1.append(["Score Técnico de Auditoria:", f"{scan.score}/100"])
     
     data = scan.raw_data
     tags = data.get("tags", [])
@@ -42,8 +42,8 @@ def export_scan_xlsx(scan_id: int, current_user: User = Depends(get_current_user
     ws1.append(["Total de Tags Detectadas:", len(tags)])
     ws1.append(["Ferramenta de Consentimento:", "Sim" if privacy.get("has_consent_tool") else "Não"])
     if privacy.get("total_violations"):
-        ws1.append(["Violações de Privacidade:", privacy.get("total_violations")])
-        ws1.append(["Exposição Estimada:", privacy.get("estimatedRiskExposure")])
+        ws1.append(["Indicadores Técnicos de Privacidade:", privacy.get("total_violations")])
+        ws1.append(["Contexto de Exposição:", privacy.get("estimatedRiskExposure")])
         
     # Tags Sheet
     ws2 = wb.create_sheet("Tags e Analytics")
@@ -60,8 +60,8 @@ def export_scan_xlsx(scan_id: int, current_user: User = Depends(get_current_user
         
     # Privacy Violations Sheet
     if privacy.get("violations"):
-        ws3 = wb.create_sheet("Violações de Privacidade")
-        ws3.append(["Severidade", "Resumo", "Descrição", "Recomendação"])
+        ws3 = wb.create_sheet("Indicadores Privacidade")
+        ws3.append(["Severidade", "Indicador", "Descrição", "Recomendação"])
         for v in privacy.get("violations"):
             ws3.append([
                 v.get("severity", "medium"),
@@ -123,7 +123,7 @@ def export_scan_pdf(scan_id: int, current_user: User = Depends(get_current_user)
     c.setFont("Helvetica", 12)
     c.drawString(50, 720, f"URL: {scan.url}")
     c.drawString(50, 700, f"Data: {scan.completed_at}")
-    c.drawString(50, 680, f"Score de Conformidade: {scan.score}/100")
+    c.drawString(50, 680, f"Score Técnico: {scan.score}/100")
     
     c.setFont("Helvetica-Bold", 14)
     c.drawString(50, 640, "Resumo Executivo")
@@ -137,10 +137,10 @@ def export_scan_pdf(scan_id: int, current_user: User = Depends(get_current_user)
     c.drawString(50, 620, f"Total de Tags: {len(tags)}")
     has_cmp = "Sim" if privacy.get("has_consent_tool") else "Não"
     c.drawString(50, 600, f"Gestão de Consentimento Ativa (CMP): {has_cmp}")
-    c.drawString(50, 580, f"Violações Encontradas: {privacy.get('total_violations', 0)}")
+    c.drawString(50, 580, f"Indicadores Técnicos: {privacy.get('total_violations', 0)}")
     
     if privacy.get("estimatedRiskExposure"):
-         c.drawString(50, 560, f"Risco de Exposição: {privacy.get('estimatedRiskExposure')}")
+         c.drawString(50, 560, f"Contexto de Exposição: {privacy.get('estimatedRiskExposure')}")
          
     c.setFont("Helvetica-Bold", 14)
     c.drawString(50, 520, "Tags Detectadas")
