@@ -199,7 +199,7 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
     response = {
         "success": True,
         "status": "completed" if not getattr(scan, "error", None) else "partial",
-        "plan": plan,
+        "access": "full",
         "url": url,
         "score": normalized_score,
         "scoreAvailable": score_available,
@@ -274,7 +274,6 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
         },
         "debugging": _build_debugging(scan, audit),
         "errors": ([{"code": "PARTIAL_SCAN", "message": str(getattr(scan, "error", ""))}] if getattr(scan, "error", None) else []),
-        "planLimitNotice": limit_note,
         "scanMethod": audit.get("scan_method") or getattr(scan, "scan_method", "html_fallback"),
         "dataQualityNotes": audit.get("data_quality_notes") or audit.get("dataQualityNotes") or [],
         "duplicates": duplicates,
@@ -318,7 +317,6 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
 
     # Determine credit consumption
     response["evidence_count"] = get_evidence_count(response)
-    response["scan_credit_consumed"] = should_consume_scan_credit(response)
 
     return response
 
@@ -337,26 +335,8 @@ def _failed_response(code: str, errors: Optional[List[Dict[str, Any]]] = None, s
 
 
 def _resolve_plan(payload_plan: str, current_user: Optional[User], is_admin_payload: bool = False) -> str:
-    """Resolve server-side entitlements from trusted identity only.
-
-    The browser payload is intentionally ignored for authorization. An
-    unauthenticated caller is always Free; authenticated users receive the plan
-    stored by the backend; administrators are determined only by backend state.
-    """
-    if current_user is None:
-        return "free"
-
-    if getattr(current_user, "is_admin", False):
-        return "premium"
-
-    user_plan = getattr(current_user, "plan", None)
-    if user_plan in VALID_PLANS:
-        if user_plan in {"pro", "premium"} and not bool(getattr(current_user, "has_active_subscription", False)):
-            return "free"
-        return user_plan
-
-    return "free"
-
+    """Backward-compatible internal switch: all callers receive full access."""
+    return "premium"
 
 def _finalize_scan_record(db: Session, record: Optional[Scan], status: str, response: Optional[dict] = None) -> None:
     if record is None:
