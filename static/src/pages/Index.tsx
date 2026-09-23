@@ -4,7 +4,6 @@ import AppHeader from '@/components/AppHeader';
 import AuditContainer from '@/components/AuditContainer';
 import AuditErrorBoundary from '@/components/AuditErrorBoundary';
 import { Shield, Search, Activity, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import logoIcon from '@/assets/logo/datatrust-logo-icon.png';
 
 
@@ -149,7 +148,6 @@ const Index = () => {
             </div>
 
             <div className="flex items-center gap-8 text-sm font-medium dt-text-muted">
-              <Link to="/pricing" className="hover:text-blue-400 transition-colors">{t('nav.pricing')}</Link>
               <a href="mailto:datatrustaudit@gmail.com" className="hover:text-blue-400 transition-colors">{t('nav.support')}</a>
             </div>
             <p className="text-xs dt-text-muted">
