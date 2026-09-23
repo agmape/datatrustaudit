@@ -61,7 +61,6 @@ export const PLAN_CONFIGS: Record<PlanType, {
         blockedFeatures: [
             'Exportação PDF / JSON / Excel',
             'Detalhes de violações LGPD/GDPR',
-            'Histórico completo de escaneamentos',
             'View-source avançado',
             'Localização exata no HTML'
         ],
@@ -92,7 +91,7 @@ export const PLAN_CONFIGS: Record<PlanType, {
             '50 escaneamentos por semana',
             'Dashboard detalhado — 70% de visibilidade',
             'Relatórios PDF profissionais',
-            'Detalhes completos de violações LGPD',
+            'Detalhes de indicadores técnicos de privacidade',
             'Exportação PDF e JSON',
             'Chat IA ilimitado',
             'Recomendações de correção',
@@ -102,7 +101,6 @@ export const PLAN_CONFIGS: Record<PlanType, {
             'View-source avançado (posição exata no HTML)',
             'Números de linha / debugging de código',
             'Monitoramento contínuo',
-            'Deep Scan multi-página',
             'Exportação Excel',
             'API e Alertas automáticos'
         ],
@@ -131,17 +129,14 @@ export const PLAN_CONFIGS: Record<PlanType, {
         color: 'from-amber-500 to-orange-600',
         features: [
             '200 escaneamentos por semana',
-            'Monitoramento Contínuo — alertas automáticos',
             '100% de visibilidade dos dados',
             'Tudo do plano Pro',
             'View-source avançado — posição exata no HTML',
             'Números de linha e debugging de código',
-            'API de integração + Webhooks',
             'Deep Scan multi-página',
             'Histórico completo de escaneamentos',
             'Exportação PDF / JSON / Excel',
-            'Suporte prioritário dedicado',
-            'Análise completa de LGPD/GDPR'
+            'Evidências técnicas completas disponíveis no scan atual'
         ],
         blockedFeatures: [],
         limits: {
@@ -185,13 +180,13 @@ const ADMIN_LIMITS: PlanLimits = {
 export const UPGRADE_COPY = {
     free: {
         title: '🔒 Você está vendo apenas 30%',
-        subtitle: 'Desbloqueie violações, PDF e 100% dos dados com o Pro',
+        subtitle: 'Desbloqueie detalhes técnicos, PDF e maior visibilidade com o Pro',
         cta: 'Assinar Pro — R$ 49,90/mês',
-        urgency: '⚡ Análise completa, 50 escaneamentos/mês'
+        urgency: '⚡ 50 escaneamentos por semana + detalhes técnicos'
     },
     pro: {
         title: '⭐ Recursos adicionais',
-        subtitle: 'Acesse 100% da visibilidade, evidências completas e Excel com o Premium',
+        subtitle: 'Acesse evidências completas, view-source e Excel com o Premium',
         cta: 'Upgrade para Premium — R$ 149,90/mês',
         urgency: '200 scans/semana + evidências completas'
     }
