@@ -164,10 +164,10 @@ const NewAuditResults = ({ result, scanId }: { result: NewAuditResult, scanId?: 
     };
 
     const handleCopyReport = () => {
-        // Free users get a summary-only copy (no violation details)
+        // Free users get a summary-only copy (no technical-risk details)
         const violationsText = limits.showViolationDetails
             ? result.privacy.violations.map(v => `- ${v.tag}: ${v.violation} (${v.article})`).join('\n')
-            : `${result.privacy.total_violations} violação(ões) — faça upgrade para detalhes completos`;
+            : `${result.privacy.total_violations} indicador(es) técnico(s) — faça upgrade para detalhes completos`;
 
         const tagsText = limits.showLineNumbers
             ? result.tags.map(t => `- ${t.name} (${t.type}) — Linha ${t.lineNumber}`).join('\n')
@@ -179,10 +179,10 @@ DataTrust Audit Report
 URL: ${result.url}
 Data: ${new Date(result.timestamp).toLocaleString('pt-BR')}
 
-Score de Conformidade: ${result.score}%
+Score Técnico de Auditoria: ${result.score}%
 Total de Tags: ${result.tagCount}
-Violações Detectadas: ${result.privacy.total_violations}
-Exposição Estimada: ${result.privacy.estimatedRiskExposure}
+Indicadores Técnicos: ${result.privacy.total_violations}
+Contexto de Exposição: ${result.privacy.estimatedRiskExposure}
 Jurisdição: ${result.privacy.jurisdiction} (${result.privacy.framework})
 
 Tags Detectadas:
@@ -273,7 +273,7 @@ ${violationsText}
                         </div>
                         <div className="bg-white/10 rounded-lg p-4 text-center backdrop-blur-sm">
                             <div className="text-3xl font-bold text-red-300">{result.privacy.total_violations}</div>
-                            <div className="text-sm text-blue-100">{t('result.violations')}</div>
+                            <div className="text-sm text-blue-100">Indicadores técnicos</div>
                         </div>
                         <div className="bg-white/10 rounded-lg p-4 text-center backdrop-blur-sm">
                             <div className="text-3xl font-bold text-cyan-300">{result.summary?.eventsDetected ?? 0}</div>
@@ -286,7 +286,7 @@ ${violationsText}
                                 <AlertTriangle className="w-8 h-8 text-red-400 mx-auto" />
                             )}
                             <div className="text-sm text-blue-100 mt-2">
-                                {result.privacy.has_consent_tool ? t('result.cmp_ok') : t('result.no_cmp')}
+                                {result.privacy.has_consent_tool ? 'CMP/sinal de consentimento observado' : 'CMP não observado'}
                             </div>
                         </div>
                         <div className="bg-white/10 rounded-lg p-4 text-center backdrop-blur-sm">
@@ -301,7 +301,7 @@ ${violationsText}
                                     {t('result.estimated_risk_blurred')}
                                 </button>
                             )}
-                            <div className="text-sm text-blue-100 mt-1">{t('result.exposure')}</div>
+                            <div className="text-sm text-blue-100 mt-1">Contexto regulatório</div>
                         </div>
                     </div>
 
@@ -716,7 +716,7 @@ ${violationsText}
                                                 {isFeatureAvailable('showViolationDetails') && (
                                                     <td className="p-3">
                                                         <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                                                            {tag.tagId || tag.matchedPattern.substring(0, 20)}
+                                                            {tag.tagId || (tag.matchedPattern ? tag.matchedPattern.substring(0, 20) : '—')}
                                                         </code>
                                                     </td>
                                                 )}
@@ -732,9 +732,9 @@ ${violationsText}
                                                 </td>
                                                 <td className="p-3">
                                                     {tag.isBeforeConsent ? (
-                                                        <Badge className="bg-red-100 text-red-800">{t('result.violation_status')}</Badge>
+                                                        <Badge className="bg-amber-100 text-amber-800">Sinal pré-consentimento</Badge>
                                                     ) : (
-                                                        <Badge className="bg-green-100 text-green-800">{t('result.ok_status')}</Badge>
+                                                        <Badge className="bg-slate-100 text-slate-700">Não observado antes do consentimento</Badge>
                                                     )}
                                                 </td>
                                             </tr>
