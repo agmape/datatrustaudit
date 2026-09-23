@@ -27,7 +27,6 @@ import SiteNavigationAnalysis from './SiteNavigationAnalysis';
 import OmnibugRealTimeDisplay from './OmnibugRealTimeDisplay';
 import { useI18n } from '@/context/I18nContext';
 import { usePlan } from '@/context/PlanContext';
-import { useAuth } from '@/context/AuthContext';
 import { Lock } from 'lucide-react';
 
 interface AuditFormProps {
@@ -52,7 +51,6 @@ const AuditForm = ({
   onNavigationComplete
 }: AuditFormProps) => {
   const { t } = useI18n();
-  const { isAuthenticated } = useAuth();
   const { isFeatureAvailable, setShowUpgradeModal, setBlockedFeature } = usePlan();
   const [activeTab, setActiveTab] = useState('url');
   const [recentUrls, setRecentUrls] = useState<string[]>([]);
@@ -189,7 +187,7 @@ const AuditForm = ({
                   ) : (
                     <div className="flex items-center gap-3 font-bold uppercase tracking-widest text-xs">
                       <Search className="h-5 w-5" />
-                      <span>{isAuthenticated ? t('home.scan_website') : t('home.create_account_to_scan')}</span>
+                      <span>{t('home.scan_website')}</span>
                     </div>
                   )}
                 </Button>
