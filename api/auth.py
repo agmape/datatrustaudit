@@ -14,16 +14,18 @@ from db.database import get_db
 from db.models import User
 
 # Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+_LOCAL_JWT_ENABLED = bool(SECRET_KEY)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 
 # ── Dev Admin Mode — NEVER enabled in production ──────────────────────────────
 _ENV = os.getenv("ENVIRONMENT", "development").lower()
+_IS_SERVERLESS_PRODUCTION = bool(os.getenv("VERCEL")) or _ENV == "production"
 _DEV_ADMIN_MODE = (
     os.getenv("DEV_ADMIN_MODE", "false").lower() == "true"
-    and _ENV != "production"
+    and not _IS_SERVERLESS_PRODUCTION
 )
 _DEV_ADMIN_EMAIL = os.getenv("DEV_ADMIN_EMAIL", "admin@datatrust.local").lower()
 _DEV_ADMIN_PASSWORD = os.getenv("ADMIN_TEST_PASSWORD", "")
@@ -88,6 +90,11 @@ def get_password_hash(password):
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    if not _LOCAL_JWT_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Local JWT authentication is not configured. Set SECRET_KEY or use Supabase authentication.",
+        )
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -100,7 +107,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 def _is_dev_admin_token(token: str) -> bool:
     """Check whether the token is a DEV_ADMIN_MODE token (dev only, never production)."""
-    if not _DEV_ADMIN_MODE:
+    if not _DEV_ADMIN_MODE or not _LOCAL_JWT_ENABLED:
         return False
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -148,12 +155,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     email = None
     supabase_user_name = None
 
-    # Try local JWT first
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-    except JWTError:
-        pass
+    # Try local JWT first only when a real server secret is configured.
+    if _LOCAL_JWT_ENABLED:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            email = payload.get("sub")
+        except JWTError:
+            pass
 
     # If local JWT failed, try Supabase JWT
     if not email and SUPABASE_JWT_SECRET:
