@@ -80,6 +80,7 @@ interface NewAuditResult {
         compliance_score: number;
     };
     score: number;
+    scoreAvailable?: boolean;
     scores?: {
         auditScore: number;
         trackingQualityScore: number;
@@ -179,7 +180,7 @@ DataTrust Audit Report
 URL: ${result.url}
 Data: ${new Date(result.timestamp).toLocaleString('pt-BR')}
 
-Score Técnico de Auditoria: ${result.score}%
+Score Técnico de Auditoria: ${result.scoreAvailable === false ? 'Não disponível' : `${result.score}%`}
 Total de Tags: ${result.tagCount}
 Indicadores Técnicos: ${result.privacy.total_violations}
 Contexto de Exposição: ${result.privacy.estimatedRiskExposure}
@@ -258,8 +259,8 @@ ${violationsText}
                             </p>
                         </div>
                         <div className="text-center">
-                            <div className={`w-24 h-24 rounded-full flex items-center justify-center text-4xl font-bold ${getScoreColor(result.score)} shadow-lg`}>
-                                {result.score}
+                            <div className={`w-24 h-24 rounded-full flex items-center justify-center text-4xl font-bold ${result.scoreAvailable === false ? "text-slate-600 bg-slate-100" : getScoreColor(result.score)} shadow-lg`}>
+                                {result.scoreAvailable === false ? "N/A" : result.score}
                             </div>
                             <p className="text-blue-100 text-sm mt-2">{t('dashboard.score_title')}</p>
                         </div>
