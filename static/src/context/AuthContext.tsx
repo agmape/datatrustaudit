@@ -145,16 +145,13 @@ async function ensureProfile(sbUser: SupabaseUser, fullName?: string): Promise<v
             || sbUser.user_metadata?.name
             || email.split('@')[0];
 
-        const isAdmin = email.toLowerCase() === ADMIN_EMAIL;
-
+        // Client-side code must never grant plan/admin entitlements. Those fields
+        // are controlled by trusted backend/database processes only.
         const { error } = await supabase.from('profiles').upsert(
             {
                 id: sbUser.id,
                 email,
                 full_name: name,
-                plan: isAdmin ? 'premium' : 'free',
-                subscription_status: isAdmin ? 'active' : 'inactive',
-                is_admin: isAdmin,
                 updated_at: new Date().toISOString(),
             },
             { onConflict: 'id' }
@@ -170,7 +167,8 @@ async function ensureProfile(sbUser: SupabaseUser, fullName?: string): Promise<v
 
 function buildUser(sbUser: SupabaseUser, profile: Profile | null): User {
     const email = sbUser.email ?? '';
-    const isAdmin = profile?.is_admin ?? (email.toLowerCase() === ADMIN_EMAIL);
+    // Never infer privileges from an email address in the browser.
+    const isAdmin = profile?.is_admin === true;
     const plan = profile?.plan || 'free';
 
     return {
