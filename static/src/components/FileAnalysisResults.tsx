@@ -358,7 +358,7 @@ const FileAnalysisResults = ({ analysisResult }: FileAnalysisResultsProps) => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5" />
-                Análise de Compliance LGPD
+                Indicadores Técnicos de Privacidade
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -383,12 +383,12 @@ const FileAnalysisResults = ({ analysisResult }: FileAnalysisResultsProps) => {
                     <div className={`text-lg font-bold ${
                       compliance.lgpdCompliant ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {compliance.lgpdCompliant ? 'Conforme' : 'Não Conforme'}
+                      {compliance.lgpdCompliant ? 'Sem sinal crítico observado' : 'Requer revisão'}
                     </div>
                     <div className={`text-sm ${
                       compliance.lgpdCompliant ? 'text-green-800' : 'text-red-800'
                     }`}>
-                      Status LGPD
+                      Status técnico
                     </div>
                   </div>
                 </div>
@@ -396,7 +396,7 @@ const FileAnalysisResults = ({ analysisResult }: FileAnalysisResultsProps) => {
                 {/* Violações */}
                 {compliance.violations.length > 0 && (
                   <div>
-                    <h3 className="font-semibold mb-4">Violações Identificadas ({compliance.violations.length})</h3>
+                    <h3 className="font-semibold mb-4">Indicadores Técnicos ({compliance.violations.length})</h3>
                     <div className="space-y-3">
                       {compliance.violations.map((violation, index) => (
                         <div key={index} className="border rounded-lg p-4">
@@ -417,14 +417,14 @@ const FileAnalysisResults = ({ analysisResult }: FileAnalysisResultsProps) => {
                   </div>
                 )}
 
-                {/* Multa Estimada */}
+                {/* Monetary exposure cannot be inferred from a technical file scan */}
                 <Alert>
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>Multa Estimada:</strong> {compliance.estimatedFine}
+                    <strong>Exposição monetária:</strong> {compliance.estimatedFine}
                     <br />
                     <span className="text-sm text-gray-600 mt-1 block">
-                      Baseado nas violações identificadas e aplicação das sanções previstas na LGPD
+                      Uma análise estática não determina infração jurídica nem valor de sanção. Requer avaliação do contexto e base legal.
                     </span>
                   </AlertDescription>
                 </Alert>
