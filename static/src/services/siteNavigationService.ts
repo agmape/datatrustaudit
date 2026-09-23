@@ -76,6 +76,11 @@ export class SiteNavigationService {
     totalEvents: number;
     violationsFound: number;
     summary: NavigationSummary;
+    allTags: any[];
+    violations: any[];
+    pageReports: any[];
+    consentDetected: boolean;
+    averageScore: number | null;
   }> {
     const normalizedUrl = this.normalizeUrl(url);
     if (!normalizedUrl) throw new Error('URL inválida');
@@ -155,6 +160,13 @@ export class SiteNavigationService {
     this.currentPage = this.pages.length;
 
     const consolidatedTags = Array.isArray(result.consolidatedTags) ? result.consolidatedTags : [];
+    const violations = reports.flatMap((report: any) =>
+      Array.isArray(report?.privacy?.violations) ? report.privacy.violations : []
+    );
+    const consentDetected = reports.some((report: any) =>
+      Boolean(report?.consent?.cmpDetected ?? report?.privacy?.cmpDetected ?? report?.summary?.consentDetected)
+    );
+    const averageScore = typeof result.averageScore === 'number' ? result.averageScore : null;
     const ga4PropertyId =
       consolidatedTags.find((t: any) => typeof t?.tagId === 'string' && t.tagId.startsWith('G-'))?.tagId || '';
 
@@ -178,8 +190,13 @@ export class SiteNavigationService {
         eventsBeforeConsent,
         scriptsBeforeConsent,
         ga4PropertyId,
-        complianceScore: typeof result.averageScore === 'number' ? result.averageScore : 0,
+        complianceScore: averageScore ?? 0,
       },
+      allTags: consolidatedTags,
+      violations,
+      pageReports: reports,
+      consentDetected,
+      averageScore,
     };
   }
 
