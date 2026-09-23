@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle, Clock, ArrowDown, Shield, Zap, AlertCircle, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, ArrowDown, Shield, Zap, AlertCircle } from 'lucide-react';
 
 interface Tag {
   name: string;
