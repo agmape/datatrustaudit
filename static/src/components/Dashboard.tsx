@@ -32,7 +32,6 @@ import {
     Activity
 } from 'lucide-react';
 import { useI18n } from '@/context/I18nContext';
-import { usePlan } from '@/context/PlanContext';
 
 interface DashboardProps {
     result: {
@@ -70,12 +69,10 @@ interface DashboardProps {
 
 const Dashboard = ({ result }: DashboardProps) => {
     const { t } = useI18n();
-    const { limits } = usePlan();
-    
-    const visibilityPercentage = limits.visibilityPercentage || 100;
-    const isTruncated = visibilityPercentage < 100;
-    const visibleCount = Math.ceil(result.tags.length * (visibilityPercentage / 100));
-    const visibleTags = result.tags.slice(0, visibleCount);
+    const visibilityPercentage = 100;
+    const isTruncated = false;
+    const visibleCount = result.tags.length;
+    const visibleTags = result.tags;
     
     // Dados para o gráfico de pizza de tipos de tags
     const COLORS = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#6B7280'];
