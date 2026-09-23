@@ -3,6 +3,7 @@ import json
 import re
 import io
 import tempfile
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -1553,19 +1554,186 @@ async def analyze_url_legacy(request: Request):
 
 
 @app.post("/deep-analyze")
-async def deep_analyze_unavailable(request: Request):
-    """Multi-page browser crawling is not reliable in the current Vercel runtime."""
-    return JSONResponse(
-        {
-            "status": "not_available",
-            "message": (
-                "Deep Scan multi-página não está habilitado em produção. "
-                "Ele requer fila, worker dedicado com Chromium e persistência."
-            ),
+async def deep_analyze(request: Request):
+    """Real same-domain multi-page audit using public page evidence only.
+
+    This endpoint never fabricates pages, events, IDs, cookies or scores. It
+    discovers real links from the submitted page, fetches up to five public
+    same-domain pages and runs the production audit engine against each page.
+    """
+    try:
+        payload = await request.json()
+        raw_url = str(payload.get("url") or "").strip()
+        if not raw_url:
+            return JSONResponse(
+                {"status": "error", "message": "URL obrigatória.", "simulated": False},
+                status_code=400,
+            )
+
+        base_url = validate_public_url(raw_url)
+
+        from audit_engine.browser_fetcher import _static_fallback
+        from audit_engine.orchestrator import run_audit
+        from api.audit import _normalize_audit_response
+
+        first_scan = await asyncio.to_thread(_static_fallback, base_url)
+        if not getattr(first_scan, "html", ""):
+            return JSONResponse(
+                {
+                    "status": "error",
+                    "message": "Não foi possível obter HTML público da URL informada.",
+                    "simulated": False,
+                    "failure_reason": getattr(first_scan, "failure_reason", None) or getattr(first_scan, "error", None),
+                },
+                status_code=502,
+            )
+
+        final_base = getattr(first_scan, "final_url", None) or base_url
+        parsed_base = urlparse(final_base)
+        base_host = (parsed_base.hostname or "").lower().removeprefix("www.")
+
+        discovered = [final_base]
+        seen = {final_base.rstrip("/")}
+        soup = BeautifulSoup(first_scan.html, "html.parser")
+
+        ignored_extensions = (
+            ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico",
+            ".css", ".js", ".pdf", ".zip", ".xml", ".json", ".mp4", ".mp3",
+            ".woff", ".woff2", ".ttf", ".eot",
+        )
+
+        for anchor in soup.find_all("a", href=True):
+            href = str(anchor.get("href") or "").strip()
+            if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+                continue
+
+            candidate = urljoin(final_base, href)
+            parsed = urlparse(candidate)
+            host = (parsed.hostname or "").lower().removeprefix("www.")
+            if parsed.scheme not in {"http", "https"} or host != base_host:
+                continue
+            if parsed.path.lower().endswith(ignored_extensions):
+                continue
+
+            clean_candidate = parsed._replace(fragment="").geturl().rstrip("/")
+            if clean_candidate in seen:
+                continue
+
+            try:
+                clean_candidate = validate_public_url(clean_candidate)
+            except Exception:
+                continue
+
+            seen.add(clean_candidate.rstrip("/"))
+            discovered.append(clean_candidate)
+            if len(discovered) >= 5:
+                break
+
+        page_reports = []
+        consolidated = {}
+        total_violations = 0
+        scores = []
+
+        for index, page_url in enumerate(discovered):
+            scan = first_scan if index == 0 else await asyncio.to_thread(_static_fallback, page_url)
+            if not getattr(scan, "html", ""):
+                page_reports.append({
+                    "url": page_url,
+                    "status": "failed",
+                    "scanMethod": getattr(scan, "scan_method", "static_fallback"),
+                    "warnings": list(getattr(scan, "warnings", []) or []),
+                    "error": getattr(scan, "error", None),
+                    "tags": [],
+                    "events": [],
+                    "summary": {},
+                })
+                continue
+
+            audit_result = await asyncio.to_thread(run_audit, page_url, scan, True)
+            normalized = _normalize_audit_response(page_url, "premium", scan, audit_result)
+
+            tags = normalized.get("tags") or []
+            events = normalized.get("events") or []
+            privacy = normalized.get("privacy") or {}
+            summary = normalized.get("summary") or {}
+            score = normalized.get("score")
+
+            if isinstance(score, (int, float)):
+                scores.append(float(score))
+            total_violations += int(summary.get("totalViolations") or privacy.get("totalViolations") or 0)
+
+            for tag in tags:
+                if not isinstance(tag, dict):
+                    continue
+                key = (
+                    str(tag.get("id") or ""),
+                    str(tag.get("tagId") or ""),
+                    str(tag.get("name") or ""),
+                    str(tag.get("matchedPattern") or ""),
+                )
+                consolidated[key] = tag
+
+            page_reports.append({
+                "url": page_url,
+                "status": normalized.get("status", "completed"),
+                "scanMethod": normalized.get("scanMethod") or getattr(scan, "scan_method", "static_fallback"),
+                "warnings": normalized.get("warnings") or [],
+                "score": score,
+                "tags": tags,
+                "events": events,
+                "privacy": privacy,
+                "consent": normalized.get("consent") or {},
+                "summary": summary,
+                "timestamp": getattr(scan, "finished_at", None) or datetime.now().isoformat(),
+            })
+
+        successful_pages = [p for p in page_reports if p.get("status") != "failed"]
+        if not successful_pages:
+            return JSONResponse(
+                {"status": "error", "message": "Nenhuma página pôde ser auditada.", "simulated": False},
+                status_code=502,
+            )
+
+        consolidated_tags = list(consolidated.values())
+        average_score = round(sum(scores) / len(scores), 1) if scores else None
+
+        return JSONResponse({
+            "status": "ok",
             "simulated": False,
-        },
-        status_code=501,
-    )
+            "result": {
+                "baseUrl": final_base,
+                "pagesDiscovered": len(discovered),
+                "pagesAudited": len(successful_pages),
+                "pageReports": page_reports,
+                "consolidatedTags": consolidated_tags,
+                "uniqueTagsFound": len(consolidated_tags),
+                "totalViolations": total_violations,
+                "averageScore": average_score,
+                "scanMethod": "real_same_domain_static_crawl",
+                "limitations": [
+                    "O Deep Scan usa HTML público real e não inventa páginas ou eventos.",
+                    "JavaScript executado, cookies e rede em runtime são capturados no scan principal quando Chromium está disponível.",
+                    "Páginas que exigem login, interação ou bloqueiam automação podem não ser auditáveis externamente.",
+                ],
+            },
+        })
+
+    except UnsafeURLError as exc:
+        return JSONResponse(
+            {"status": "error", "message": str(exc), "simulated": False},
+            status_code=400,
+        )
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {
+                "status": "error",
+                "message": f"Falha no Deep Scan real: {type(exc).__name__}: {exc}",
+                "simulated": False,
+            },
+            status_code=500,
+        )
 
 
 @app.get("/history")
