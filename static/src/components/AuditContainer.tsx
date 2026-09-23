@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
 import { FileAnalysisService } from '@/services/fileAnalysisService';
 import AuditForm from '@/components/AuditForm';
@@ -8,8 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { BarChart3 } from 'lucide-react';
-import { usePlan } from '@/context/PlanContext';
-import { useAuth } from '@/context/AuthContext';
 import { useI18n } from '@/context/I18nContext';
 
 interface Tag {
@@ -268,17 +266,6 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditPhase, setAuditPhase] = useState<string>('');
 
-  // Plan entitlement — always pull actionLimits so admin is never blocked by mock UI state
-  const { plan, limits, actionLimits, adminIsPreviewingUI, isFeatureAvailable, canPerformAudit, useAudit } = usePlan();
-  const { user, token, isAuthenticated } = useAuth();
-  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-    }
-  }, []);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const scanUrl = params.get('scanUrl') || localStorage.getItem('datatrust-pending-scan-url');
@@ -287,9 +274,6 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
       localStorage.removeItem('datatrust-pending-scan-url');
     }
   }, [url]);
-
-  // Force-disable view-source for non-Premium users even if toggle somehow got set
-  const effectiveViewSource = useViewSource && isFeatureAvailable('showScripts');
 
   const clearAuditData = () => {
     setAuditResult(null);
@@ -307,86 +291,27 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
   // REGRA: nunca lê uiMockState para lógica de negócio. Apenas a URL e o
   //        token real do usuário chegam ao fetch.
   // ─────────────────────────────────────────────────────────────────────────
+  // Public audit entrypoint: no login, token, subscription, quota or plan state.
+  // ─────────────────────────────────────────────────────────────────────────
   const handleAudit = async () => {
-    // ── 1. Captura e sanitiza URL ────────────────────────────────────────────
     const inputUrl = url.trim();
-
-    console.log('🔥 [DEBUG] handleAudit chamado. Estado inicial:', {
-      inputUrl,
-      isAuthenticated,
-      hasToken: !!token,
-      planType: plan.type,
-      isAdmin: Boolean(user?.is_admin) || Boolean(plan.isAdmin),
-      adminIsPreviewingUI,
-    });
 
     if (!inputUrl) {
       toast({ title: t('common.error'), description: t('audit.invalid_url_message'), variant: 'destructive' });
       return;
     }
 
-    // Auto-prefixo https://
-    let targetUrl = inputUrl;
-    if (!/^https?:\/\//i.test(targetUrl)) {
-      targetUrl = 'https://' + targetUrl;
-    }
+    const targetUrl = /^https?:\/\//i.test(inputUrl) ? inputUrl : `https://${inputUrl}`;
 
-    // Valida formato de URL sem try/catch que engole fluxo
-    let parsedUrl: URL;
     try {
-      parsedUrl = new URL(targetUrl);
+      const parsedUrl = new URL(targetUrl);
       if (!parsedUrl.hostname.includes('.')) throw new Error('hostname inválido');
     } catch (parseErr) {
-      console.warn('⚠️ [DEBUG] URL inválida:', targetUrl, parseErr);
+      console.warn('⚠️ URL inválida:', targetUrl, parseErr);
       toast({ title: t('audit.invalid_url'), description: t('audit.invalid_url_message'), variant: 'destructive' });
       return;
     }
 
-    // ── 2. Auditoria pública ──────────────────────────────────────────────────
-    // Login não é necessário. Visitantes anônimos seguem como plano Free.
-    if (!isAuthenticated) {
-      console.info('ℹ️ [DEBUG] Auditoria pública sem autenticação');
-    }
-
-    // ── 3. Resolve identidade real (ignora uiMockState completamente) ────────
-    const isAdminUser = Boolean(user?.is_admin) || Boolean(plan.isAdmin);
-    // realPlanType: para o backend, admin é sempre 'premium' (sem mock)
-    const realPlanType: string = isAdminUser ? 'premium' : (isAuthenticated ? plan.type : 'free');
-    const scanDomain = parsedUrl.hostname.replace(/^www\./i, '').toLowerCase();
-
-    console.log('🔥 [DEBUG] Identidade resolvida:', {
-      isAdminUser,
-      realPlanType,
-      adminIsPreviewingUI,
-      'plan.type (pode ser mockado)': plan.type,
-      scanDomain,
-    });
-
-    // ── 4. Domain-lock Premium (só para não-admin) ───────────────────────────
-    if (isAuthenticated && !isAdminUser && plan.type === 'premium') {
-      const storedDomain = localStorage.getItem('datatrust-premium-scan-domain');
-      if (storedDomain && storedDomain !== scanDomain) {
-        toast({ title: t('audit.limit_reached'), description: t('audit.premium_domain_locked'), variant: 'destructive' });
-        return;
-      }
-      if (!storedDomain) {
-        localStorage.setItem('datatrust-premium-scan-domain', scanDomain);
-      }
-    }
-
-    // ── 5. Verifica quota (canPerformAudit usa actionLimits, não o mock) ─────
-    if (!canPerformAudit()) {
-      const remaining = actionLimits.scansPerWeek === -1 ? '∞' : String(plan.scansRemaining ?? 0);
-      console.warn('⚠️ [DEBUG] Quota esgotada:', { remaining, actionLimits, planType: plan.type });
-      toast({
-        title: t('audit.limit_reached'),
-        description: `${t('audit.limit_reached_desc')} (${remaining} scans restantes)`,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // ── 6. Prepara UI ────────────────────────────────────────────────────────
     if (currentAuditUrl !== targetUrl) clearAuditData();
 
     setLoading(true);
@@ -396,164 +321,88 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
     setAnalysisType('url');
     onStateChange?.(true);
 
-    // ── 7. Constrói payload — ISOLADO do uiMockState ─────────────────────────
-    const userToken = token ?? null;
     const requestBody = {
-      url: targetUrl,           // URL digitada pelo usuário
-      plan: realPlanType,       // NUNCA o plano mockado
-      is_admin: isAdminUser,    // backend pode double-verificar
-      view_source: useViewSource && isFeatureAvailable('showScripts'),
-    };
-
-    const requestHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (userToken) {
-      requestHeaders['Authorization'] = `Bearer ${userToken}`;
-    }
-
-    // ── 8. LOG DE RASTREIO — EXATAMENTE o formato pedido ────────────────────
-    console.log('🔥 [DEBUG] Disparando Auditoria. Payload:', {
       url: targetUrl,
-      adminStatus: isAdminUser,
-      mockState: adminIsPreviewingUI ? plan.type : null,
-      token: !!userToken,
-    });
-    console.log('🔥 [DEBUG] requestBody completo:', requestBody);
-    console.log('🔥 [DEBUG] headers:', { ...requestHeaders, Authorization: userToken ? 'Bearer ***' : 'ausente' });
+      view_source: true,
+    };
 
-    // ── 9. HTTP POST /api/audit ──────────────────────────────────────────────
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      console.warn('⏱️ [DEBUG] Timeout de 45s atingido — abortando fetch');
-      controller.abort();
-    }, 45_000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 110_000);
 
     try {
       setAuditPhase(t('audit.phase_reading'));
 
       const response = await fetch('/api/audit', {
         method: 'POST',
-        headers: requestHeaders,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
       window.clearTimeout(timeoutId);
 
-      console.log('🔥 [DEBUG] Resposta HTTP:', { status: response.status, ok: response.ok });
-
-      // ── Trata erro HTTP ────────────────────────────────────────────────────
       if (!response.ok) {
         let errData: any = null;
-        try { errData = await response.json(); } catch { /* corpo não-JSON */ }
-
-        const code = response.status;
+        try { errData = await response.json(); } catch { /* non-JSON body */ }
         const apiMsg = errData?.message || errData?.detail || errData?.error || null;
         const codeLabel =
-          code === 401 ? 'AUTH_ERROR (401 — token inválido ou expirado)' :
-          code === 403 ? 'FORBIDDEN (403 — sem permissão)' :
-          code === 422 ? 'INVALID_PAYLOAD (422 — dados malformados)' :
-          code === 429 ? 'QUOTA_EXCEEDED (429 — limite de scans atingido)' :
-          code >= 500  ? `SERVER_ERROR (${code})` :
-                         `API_ERROR (${code})`;
-
-        // ── CATCH DIRETO DA RESPOSTA DA API (formato exato pedido) ──────────
-        console.error('🚨 [DEBUG] Erro Fatal na API:', errData || apiMsg || codeLabel);
-        console.error('🚨 [DEBUG] Detalhe completo:', { code, codeLabel, errData, requestBody });
-
+          response.status === 400 ? 'URL inválida ou bloqueada por segurança.' :
+          response.status === 422 ? 'Dados da auditoria inválidos.' :
+          response.status >= 500 ? `Erro do servidor (${response.status}).` :
+          `Erro da API (${response.status}).`;
         throw new Error(apiMsg || codeLabel);
       }
 
-      // ── Processa resposta de sucesso ───────────────────────────────────────
       const data = await response.json();
-      console.log('✅ [DEBUG] Resposta da API recebida:', {
-        success: data.success,
-        status: data.status,
-        scan_id: data.scan_id,
-        score: data.score,
-        tagCount: data.tags?.length,
-      });
-
       if (data.success === false) {
-        const friendly = data.errorCode === 'INVALID_URL'
-          ? t('audit.invalid_url_message')
-          : data.message || t('audit.error_generic');
-        console.error('🚨 [DEBUG] API retornou success=false:', { errorCode: data.errorCode, message: data.message });
-        setAuditError(friendly);
-        setAuditPhase(t('audit.phase_failed'));
-        setLoading(false);
-        onStateChange?.(false);
-        toast({ title: t('audit.error_title'), description: friendly, variant: 'destructive' });
-        return;
+        throw new Error(
+          data.errorCode === 'INVALID_URL'
+            ? t('audit.invalid_url_message')
+            : data.message || t('audit.error_generic')
+        );
       }
 
-      // ── Sucesso — renderiza resultado ──────────────────────────────────────
       const scanId = data.scan_id ?? null;
       setCurrentScanId(scanId);
       setAuditPhase(data.status === 'partial' ? t('audit.phase_partial') : t('audit.phase_completed'));
       setAuditResult(normalizeAuditResult(data));
-      useAudit(); // decrementa quota apenas para não-admin
 
-      const violationCount = data.summary?.totalViolations ?? data.privacy?.totalViolations ?? data.privacy?.total_violations ?? 0;
-      const score = data.score ?? 0;
-      console.log('✅ [DEBUG] Auditoria concluída com sucesso:', { scanId, score, violationCount });
+      const violationCount =
+        data.summary?.totalViolations ??
+        data.privacy?.totalViolations ??
+        data.privacy?.total_violations ??
+        0;
+      const score = data.score;
 
       toast({
         title: data.status === 'partial' ? t('audit.partial_results') : t('audit.completed'),
-        description: `${t('dashboard.compliance_score')}: ${score}% — ${violationCount} ${t('dashboard.privacy_risks')}`,
+        description: score == null
+          ? `${violationCount} ${t('dashboard.privacy_risks')}`
+          : `${t('dashboard.compliance_score')}: ${score}% — ${violationCount} ${t('dashboard.privacy_risks')}`,
       });
       setLoading(false);
-
     } catch (error) {
       window.clearTimeout(timeoutId);
 
-      const isAbort  = error instanceof DOMException && error.name === 'AbortError';
-      const isNetErr = error instanceof TypeError && (error.message.includes('fetch') || error.message.includes('network'));
+      const isAbort = error instanceof DOMException && error.name === 'AbortError';
+      const isNetErr = error instanceof TypeError &&
+        (error.message.toLowerCase().includes('fetch') || error.message.toLowerCase().includes('network'));
 
-      let userMessage: string;
-      let debugCode: string;
+      const userMessage = isAbort
+        ? 'A auditoria excedeu o tempo máximo. Tente novamente; sites com proteção anti-bot podem demorar mais.'
+        : isNetErr
+          ? 'Erro de rede — não foi possível alcançar o servidor de auditoria.'
+          : error instanceof Error
+            ? error.message
+            : t('audit.error_init');
 
-      if (isAbort) {
-        userMessage = t('audit.timeout_error');
-        debugCode   = 'TIMEOUT_45s';
-      } else if (isNetErr) {
-        userMessage = 'Erro de rede — servidor inativo ou sem conexão.';
-        debugCode   = 'NETWORK_ERROR';
-      } else if (error instanceof Error) {
-        userMessage = error.message;
-        debugCode   =
-          error.message.includes('401') ? 'AUTH_FAILURE' :
-          error.message.includes('403') ? 'FORBIDDEN' :
-          error.message.includes('422') ? 'INVALID_PAYLOAD' :
-          error.message.includes('429') ? 'QUOTA_EXCEEDED' :
-          error.message.includes('500') ? 'SERVER_ERROR' :
-          'UNKNOWN';
-      } else {
-        userMessage = t('audit.error_init');
-        debugCode   = 'UNKNOWN';
-      }
-
-      // ── CATCH DIRETO DA RESPOSTA DA API (formato exato pedido) ──────────────
-      console.error('🚨 [DEBUG] Erro Fatal na API:', (error instanceof Error ? error.message : error));
-      console.error('🚨 [DEBUG] Contexto completo do erro:', {
-        debugCode,
-        error,
-        requestBody,
-        isAdminUser,
-        adminIsPreviewingUI,
-        'plan.type (pode ser mockado)': plan.type,
-        realPlanType,
-        scansRemaining: plan.scansRemaining,
-        hasToken: !!userToken,
-      });
-
+      console.error('🚨 Falha na auditoria pública:', error);
       setAuditResult(null);
       setAuditError(userMessage);
       setAuditPhase(t('audit.phase_failed'));
       setLoading(false);
       onStateChange?.(false);
       toast({
-        title: `❌ ${t('audit.error_title')} [${debugCode}]`,
+        title: `❌ ${t('audit.error_title')}`,
         description: userMessage,
         variant: 'destructive',
       });
