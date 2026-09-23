@@ -206,13 +206,12 @@ export default function OutreachEnginePanel({
             items.push({
                 icon: ShieldX,
                 iconColor: 'text-red-500',
-                title: `${sensitiveCount} Dado(s) Pessoal(is) Sensível(is) Detectado(s)`,
+                title: `${sensitiveCount} Sinal(is) de Dado Pessoal Sensível Detectado(s)`,
                 description: `Categorias: ${sensitive.slice(0, 3).map(s =>
                     SENSITIVE_LABELS[(s.category ?? s.type ?? '').toLowerCase()] ?? s.category ?? s.type ?? '?'
                 ).join(', ')}${sensitive.length > 3 ? ` +${sensitive.length - 3}` : ''}.`,
                 severity: 'critical' as const,
-                legalNote: 'Dosimetria agravada (Art. 52 §1º LGPD): Dados sensíveis elevam o teto da multa ANPD. ' +
-                           'Risco de sanção qualificada + publicização da infração.',
+                legalNote: 'Dados sensíveis exigem revisão cuidadosa da finalidade, necessidade, base legal e controles aplicáveis. O scan não determina infração ou sanção.',
             });
         }
 
@@ -221,8 +220,8 @@ export default function OutreachEnginePanel({
             items.push({
                 icon: ShieldAlert,
                 iconColor: 'text-orange-500',
-                title: `${piiCount} Instância(s) de PII Trafegando em Texto Claro`,
-                description: `Tipos detectados: ${piiTypes || 'E-mail, CPF, User-ID'}. Dados visíveis em payloads de rede sem criptografia adicional.`,
+                title: `${piiCount} Sinal(is) de PII em Evidência Técnica`,
+                description: `Tipos sinalizados: ${piiTypes || 'identificadores pessoais'}. Verifique a fonte, destino, finalidade e necessidade desses parâmetros.`,
                 severity: 'high' as const,
             });
         }
@@ -233,7 +232,7 @@ export default function OutreachEnginePanel({
                 icon: Clock,
                 iconColor: 'text-amber-500',
                 title: `${tagsBeforeConsent.length} Tag(s) Disparando Antes do Consentimento`,
-                description: `${tagNames}${tagsBeforeConsent.length > 3 ? ` +${tagsBeforeConsent.length - 3}` : ''}. Cookie bypassing — coleta ativa antes de opt-in. Violação direta do Art. 7º e 8º LGPD.`,
+                description: `${tagNames}${tagsBeforeConsent.length > 3 ? ` +${tagsBeforeConsent.length - 3}` : ''}. O backend marcou evidência/heurística de ativação antes de um sinal observável de consentimento; a base legal requer verificação.`,
                 severity: 'medium' as const,
             });
         }
@@ -243,7 +242,7 @@ export default function OutreachEnginePanel({
                 icon: AlertTriangle,
                 iconColor: 'text-amber-400',
                 title: 'Nenhum CMP (Consent Management Platform) Detectado',
-                description: 'Ausência de mecanismo de consentimento válido. Todo tracking ativo é presumivelmente ilegal sem base legal alternativa comprovada.',
+                description: 'Nenhum CMP conhecido foi observado. Isso não prova ausência de base legal ou de mecanismo customizado; requer verificação manual.',
                 severity: 'high' as const,
             });
         }
@@ -252,8 +251,8 @@ export default function OutreachEnginePanel({
             items.push({
                 icon: AlertTriangle,
                 iconColor: 'text-orange-400',
-                title: `${totalViolations} Violação(ões) de Privacidade Detectada(s)`,
-                description: 'Gaps de conformidade identificados na análise de disclosure, consentimento e ciclo de vida de dados.',
+                title: `${totalViolations} Indicador(es) Técnico(s) de Privacidade`,
+                description: 'Sinais técnicos identificados no scanner que merecem revisão de privacidade e, quando necessário, avaliação jurídica.',
                 severity: 'high' as const,
             });
         }
@@ -263,16 +262,11 @@ export default function OutreachEnginePanel({
 
     // ── Risk score (0–100, calculated) ────────────────────────
     const riskScore = useMemo(() => {
-        let s = result.score ?? 100;
-        // Invert: high score = low risk. We want risk score.
-        let risk = 100 - s;
-        if (sensitiveCount > 0) risk = Math.min(100, risk + 30);
-        if (piiCount > 0) risk = Math.min(100, risk + 15);
-        if (!hasCmp) risk = Math.min(100, risk + 10);
-        return Math.round(Math.min(100, risk));
-    }, [result.score, sensitiveCount, piiCount, hasCmp]);
+        const technicalScore = Number.isFinite(result.score) ? Number(result.score) : 50;
+        return Math.round(Math.max(0, Math.min(100, 100 - technicalScore)));
+    }, [result.score]);
 
-    const riskLevel = riskScore >= 70 ? 'CRÍTICO' : riskScore >= 45 ? 'ALTO' : riskScore >= 25 ? 'MÉDIO' : 'BAIXO';
+    const riskLevel = riskScore >= 70 ? 'PRIORIDADE MUITO ALTA' : riskScore >= 45 ? 'PRIORIDADE ALTA' : riskScore >= 25 ? 'PRIORIDADE MÉDIA' : 'PRIORIDADE BAIXA';
     const riskColor = riskScore >= 70 ? 'text-red-400' : riskScore >= 45 ? 'text-orange-400' : riskScore >= 25 ? 'text-amber-400' : 'text-green-400';
     const riskRingColor = riskScore >= 70 ? 'border-red-500/60 shadow-red-900/30' : riskScore >= 45 ? 'border-orange-500/60 shadow-orange-900/30' : 'border-amber-500/60 shadow-amber-900/20';
 
@@ -297,21 +291,21 @@ export default function OutreachEnginePanel({
             ? `\n\n🟠 PII em Texto Claro — ${piiCount} instância(s):\nDados como e-mail, CPF, User-ID e identificadores de usuário estão sendo transmitidos sem criptografia adicional — visíveis diretamente no Data Layer e em requests de rede.`
             : '';
         const consentBlock = tagsBeforeConsent.length > 0
-            ? `\n\n🟡 Cookie Bypassing — ${tagsBeforeConsent.length} tag(s) pré-consentimento:\n${tagsBeforeConsent.slice(0, 3).map(t => t.name).join(', ')} disparam antes do opt-in do visitante. Coleta ativa sem base legal válida (Art. 7º + 8º LGPD).`
+            ? `\n\n🟡 Cookie Bypassing — ${tagsBeforeConsent.length} tag(s) pré-consentimento:\n${tagsBeforeConsent.slice(0, 3).map(t => t.name).join(', ')} disparam antes do opt-in do visitante. A ativação ocorreu antes de um sinal de consentimento observável; a base legal não é determinável externamente.`
             : '';
 
         return `Olá, ${dpoPart}. Tudo bem?
 
-Realizamos uma análise técnica automatizada do front-end de ${companyPart} (${hostname}) e identificamos vulnerabilidades de conformidade LGPD que precisam da sua atenção.
+Realizamos uma análise técnica automatizada do front-end de ${companyPart} (${hostname}) e identificamos indicadores técnicos de privacidade e tracking que merecem revisão.
 ${sensitiveBlock}${piiBlock}${consentBlock}
 
 📋 RESUMO DO RISCO:
-• Score de Risco: ${riskScore}/100 (${riskLevel})
+• Índice técnico de priorização: ${riskScore}/100 (${riskLevel})
 • Tags detectadas: ${result.tagCount}
-• Violações identificadas: ${totalViolations}
-• CMP ativo: ${hasCmp ? 'Sim' : '❌ Não detectado'}
+• Indicadores técnicos: ${totalViolations}
+• CMP/sinal de consentimento observado: ${hasCmp ? 'Sim' : 'Não observado'}
 
-Geramos um relatório técnico detalhando as origens de cada vazamento, as tags responsáveis e um plano de remediação priorizado.
+Geramos um relatório técnico com as evidências observadas, níveis de confiança, tags associadas e pontos que exigem validação manual.
 
 Teríamos 15 minutos esta semana para apresentar essas evidências e como podemos mitigar os riscos rapidamente?
 
@@ -343,7 +337,7 @@ https://datatrustaudit.com`;
                 {/* Top bar */}
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-700/40 bg-slate-800/60">
                     <Zap className="w-4 h-4 text-blue-400" />
-                    <span className="text-sm font-bold text-slate-100 tracking-tight">Motor de Criticidade — Triagem de Risco LGPD</span>
+                    <span className="text-sm font-bold text-slate-100 tracking-tight">Triagem Técnica — Priorização de Evidências</span>
                     <span className="ml-auto text-[10px] text-slate-500 font-mono">{hostname}</span>
                 </div>
 
@@ -356,7 +350,7 @@ https://datatrustaudit.com`;
                             <span className="text-[9px] text-slate-500 uppercase tracking-widest -mt-0.5">/ 100</span>
                         </div>
                         <div className={`text-xs font-black tracking-widest uppercase ${riskColor}`}>{riskLevel}</div>
-                        <div className="text-[9px] text-slate-500 text-center leading-tight max-w-[90px]">Score de Risco LGPD</div>
+                        <div className="text-[9px] text-slate-500 text-center leading-tight max-w-[90px]">Índice técnico</div>
                     </div>
 
                     {/* Risk findings list */}
@@ -377,7 +371,7 @@ https://datatrustaudit.com`;
                 {/* Quick stat pills */}
                 <div className="px-4 pb-4 flex flex-wrap gap-2">
                     <StatPill icon={BarChart3} label="Tags" value={result.tagCount} color="blue" />
-                    <StatPill icon={ShieldAlert} label="Violações" value={totalViolations} color="red" />
+                    <StatPill icon={ShieldAlert} label="Indicadores" value={totalViolations} color="red" />
                     <StatPill icon={Eye} label="PII" value={piiCount} color="orange" />
                     <StatPill icon={ShieldX} label="Sensíveis" value={sensitiveCount} color="rose" />
                     <StatPill icon={Clock} label="Pré-consent" value={tagsBeforeConsent.length} color="amber" />
