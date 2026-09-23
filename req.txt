@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+jinja2
+requests
+beautifulsoup4
+python-multipart
+python-dotenv
+google-genai
+python-jose[cryptography]
+passlib[bcrypt]
+sqlalchemy
+psycopg2-binary
+playwright
+pydantic[email]
+openpyxl
+reportlab
+mercadopago

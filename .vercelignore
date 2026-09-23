@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.git
+.git/**
+**/__pycache__/**
+**/*.pyc
+**/node_modules/**
+static/dist/**
+**/*.log
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+db_broken/**
+static_broken/**

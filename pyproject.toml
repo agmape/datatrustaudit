@@ -1,0 +1,27 @@
+[project]
+name = "datatrust-audit"
+version = "2.0.0"
+description = "DataTrust Audit - Tag Manager and LGPD compliance auditing"
+requires-python = "~=3.12.0"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "jinja2",
+  "requests",
+  "beautifulsoup4",
+  "python-multipart",
+  "python-dotenv",
+  "google-genai",
+  "python-jose[cryptography]",
+  "passlib[bcrypt]",
+  "sqlalchemy",
+  "psycopg2-binary",
+  "playwright",
+  "pydantic[email]",
+  "openpyxl",
+  "reportlab",
+  "mercadopago",
+]
+
+[tool.vercel.fastapi.static]
+cdn = true

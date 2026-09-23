@@ -1,0 +1,74 @@
+[
+  {
+    "total_tags": 0,
+    "tags_info": [],
+    "score": 100,
+    "problems": [],
+    "timestamp": "2026-05-13 19:48:09",
+    "url": "https://example.com"
+  },
+  {
+    "total_tags": 11,
+    "tags_info": [
+      {
+        "src": "(inline)",
+        "inline_length": 4787,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 37806,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 1771,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 253,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 224,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 236,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 486,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 1664,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 6460,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 1516,
+        "is_duplicate": false
+      },
+      {
+        "src": "(inline)",
+        "inline_length": 4293,
+        "is_duplicate": false
+      }
+    ],
+    "score": 100,
+    "problems": [],
+    "timestamp": "2026-05-13 19:49:14",
+    "url": "https://www.google.com"
+  }
+]

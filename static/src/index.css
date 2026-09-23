@@ -1,0 +1,402 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ══════════════════════════════════════════════════════════════
+   DataTrust Audit — Design System
+   Themes: dark (default) | light | executive
+   All colors MUST be HSL for shadcn compatibility.
+   ══════════════════════════════════════════════════════════════ */
+
+@layer base {
+  /* ── Light theme ── */
+  :root,
+  .light {
+    --background: 210 40% 98%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221 83% 53%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* DataTrust custom tokens — Light */
+    --dt-background: #f8fafc;
+    --dt-surface: #ffffff;
+    --dt-surface-elevated: #ffffff;
+    --dt-surface-soft: #f1f5f9;
+    --dt-border: #e2e8f0;
+    --dt-text-primary: #0f172a;
+    --dt-text-secondary: #334155;
+    --dt-text-muted: #64748b;
+    --dt-brand-blue: #2563eb;
+    --dt-brand-cyan: #0891b2;
+    --dt-success: #16a34a;
+    --dt-warning: #d97706;
+    --dt-danger: #dc2626;
+    --dt-danger-bg: #fef2f2;
+    --dt-danger-border: #fecaca;
+    --dt-danger-text: #7f1d1d;
+    --dt-admin-bg: #fef9c3;
+    --dt-admin-border: #fde047;
+    --dt-admin-text: #713f12;
+    --dt-header-bg: rgba(255, 255, 255, 0.92);
+    --dt-page-bg: #f8fafc;
+    --dt-card-bg: #ffffff;
+    --dt-card-border: #e2e8f0;
+  }
+
+  /* ── Dark theme (default) ── */
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* DataTrust custom tokens — Dark */
+    --dt-background: #070b16;
+    --dt-surface: #0f172a;
+    --dt-surface-elevated: #111827;
+    --dt-surface-soft: #1e293b;
+    --dt-border: rgba(148, 163, 184, 0.22);
+    --dt-text-primary: #f8fafc;
+    --dt-text-secondary: #cbd5e1;
+    --dt-text-muted: #94a3b8;
+    --dt-brand-blue: #3b82f6;
+    --dt-brand-cyan: #22d3ee;
+    --dt-success: #22c55e;
+    --dt-warning: #f59e0b;
+    --dt-danger: #ef4444;
+    --dt-danger-bg: rgba(239, 68, 68, 0.12);
+    --dt-danger-border: rgba(239, 68, 68, 0.45);
+    --dt-danger-text: #fecaca;
+    --dt-admin-bg: rgba(250, 204, 21, 0.12);
+    --dt-admin-border: rgba(250, 204, 21, 0.45);
+    --dt-admin-text: #fde68a;
+    --dt-header-bg: rgba(7, 11, 22, 0.92);
+    --dt-page-bg: #070b16;
+    --dt-card-bg: #0f172a;
+    --dt-card-border: rgba(148, 163, 184, 0.15);
+  }
+
+  /* ── Executive theme — premium navy + electric blue + risk accents ── */
+  .executive {
+    --background: 220 60% 7%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 50% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 50% 10%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 213 94% 55%;
+    --primary-foreground: 220 60% 7%;
+
+    --secondary: 220 40% 18%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 220 35% 16%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 220 40% 18%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 30% 20%;
+    --input: 220 30% 20%;
+    --ring: 213 94% 55%;
+
+    --sidebar-background: 220 55% 8%;
+    --sidebar-foreground: 210 40% 92%;
+    --sidebar-primary: 213 94% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 40% 14%;
+    --sidebar-accent-foreground: 210 40% 92%;
+    --sidebar-border: 220 30% 16%;
+    --sidebar-ring: 213 94% 55%;
+
+    /* DataTrust custom tokens — Executive */
+    --dt-background: #0a1628;
+    --dt-surface: #0f1d32;
+    --dt-surface-elevated: #132340;
+    --dt-surface-soft: #1a2d4d;
+    --dt-border: rgba(59, 130, 246, 0.2);
+    --dt-text-primary: #f0f4f8;
+    --dt-text-secondary: #b8cce2;
+    --dt-text-muted: #7b93b0;
+    --dt-brand-blue: #3b82f6;
+    --dt-brand-cyan: #06b6d4;
+    --dt-success: #10b981;
+    --dt-warning: #f59e0b;
+    --dt-danger: #ef4444;
+    --dt-danger-bg: rgba(239, 68, 68, 0.15);
+    --dt-danger-border: rgba(239, 68, 68, 0.4);
+    --dt-danger-text: #fca5a5;
+    --dt-admin-bg: rgba(59, 130, 246, 0.15);
+    --dt-admin-border: rgba(59, 130, 246, 0.4);
+    --dt-admin-text: #93c5fd;
+    --dt-header-bg: rgba(10, 22, 40, 0.95);
+    --dt-page-bg: #0a1628;
+    --dt-card-bg: #0f1d32;
+    --dt-card-border: rgba(59, 130, 246, 0.15);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Smooth theme transitions */
+  html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .dark ::-webkit-scrollbar-track,
+  .executive ::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.5);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+  }
+
+  .light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+  }
+  .light ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+  .executive ::-webkit-scrollbar-thumb {
+    background: #1e3a5f;
+  }
+  .executive ::-webkit-scrollbar-thumb:hover {
+    background: #2563eb40;
+  }
+}
+
+/* Shimmer animation for skeletons */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  background-size: 200% 100%;
+}
+
+.light .animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,0.06), transparent);
+  background-size: 200% 100%;
+}
+
+/* ── Theme-aware utility classes ── */
+
+.dt-page {
+  background: var(--dt-page-bg);
+  color: var(--dt-text-primary);
+  min-height: 100vh;
+}
+
+.dt-header {
+  background: var(--dt-header-bg);
+  border-bottom: 1px solid var(--dt-card-border);
+  color: var(--dt-text-primary);
+  backdrop-filter: blur(20px);
+}
+
+.dt-card {
+  background: var(--dt-card-bg);
+  border: 1px solid var(--dt-card-border);
+  border-radius: 1rem;
+}
+
+.dt-audit-failed-card {
+  background: var(--dt-danger-bg);
+  border: 1px solid var(--dt-danger-border);
+  color: var(--dt-danger-text);
+}
+
+.dt-audit-partial-card {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--dt-warning);
+}
+.dark .dt-audit-partial-card,
+.executive .dt-audit-partial-card {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+
+.dt-admin-badge {
+  background: var(--dt-admin-bg);
+  border: 1px solid var(--dt-admin-border);
+  color: var(--dt-admin-text);
+}
+
+.dt-text-primary { color: var(--dt-text-primary); }
+.dt-text-secondary { color: var(--dt-text-secondary); }
+.dt-text-muted { color: var(--dt-text-muted); }
+.dt-surface { background: var(--dt-surface); }
+.dt-surface-elevated { background: var(--dt-surface-elevated); }
+.dt-border { border-color: var(--dt-border); }
+
+/* ── Executive theme accents ── */
+.executive .dt-card {
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.08), 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.executive .dt-header {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Light theme overrides for components using hardcoded dark colors ── */
+.light .bg-\[\#070b16\] { background-color: var(--dt-page-bg) !important; }
+.light .bg-\[\#0f172a\] { background-color: var(--dt-surface) !important; }
+.light .bg-\[\#111827\] { background-color: var(--dt-surface-elevated) !important; }
+.light .text-white { color: var(--dt-text-primary) !important; }
+.light .text-slate-200 { color: var(--dt-text-secondary) !important; }
+.light .text-slate-400 { color: var(--dt-text-muted) !important; }
+.light .text-slate-500 { color: var(--dt-text-muted) !important; }
+.light .text-white\/80 { color: var(--dt-text-secondary) !important; }
+.light .text-white\/60 { color: var(--dt-text-muted) !important; }
+.light .text-white\/40 { color: #94a3b8 !important; }
+.light .text-white\/30 { color: #94a3b8 !important; }
+.light .text-white\/20 { color: #cbd5e1 !important; }
+.light .border-white\/5 { border-color: #e2e8f0 !important; }
+.light .border-white\/10 { border-color: #e2e8f0 !important; }
+.light .border-white\/20 { border-color: #cbd5e1 !important; }
+.light .bg-white\/5 { background-color: rgba(0, 0, 0, 0.03) !important; }
+.light .bg-white\/10 { background-color: rgba(0, 0, 0, 0.05) !important; }
+.light .hover\:bg-white\/5:hover { background-color: rgba(0, 0, 0, 0.04) !important; }
+.light .hover\:bg-white\/10:hover { background-color: rgba(0, 0, 0, 0.06) !important; }
+
+/* Executive theme overrides */
+.executive .bg-\[\#070b16\] { background-color: var(--dt-page-bg) !important; }
+.executive .bg-\[\#0f172a\] { background-color: var(--dt-surface) !important; }
+.executive .bg-\[\#111827\] { background-color: var(--dt-surface-elevated) !important; }
+
+/* ── Premium gradient accent ── */
+.dt-gradient-text {
+  background: linear-gradient(135deg, #3b82f6, #06b6d4, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Focus ring */
+.dt-focus-ring:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* ── Audit list scrollbar utilities ── */
+.scrollbar-thin { scrollbar-width: thin; }
+.scrollbar-hide { scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* Orange-tinted scrollbar for duplicates accordion */
+.scrollbar-thumb-orange-700\/40::-webkit-scrollbar-thumb {
+  background-color: rgba(194, 65, 12, 0.4);
+  border-radius: 4px;
+}
+.scrollbar-thumb-orange-700\/40::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(194, 65, 12, 0.65);
+}
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
