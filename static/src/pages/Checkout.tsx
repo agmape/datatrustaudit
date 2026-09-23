@@ -42,8 +42,8 @@ const PLAN_META: Record<SubscriptionPlan, {
         icon: <Star className="w-5 h-5" />,
         audits: { en: '50 scans per week', pt: '50 escaneamentos por semana' },
         highlights: {
-            en: ['Full audit (GA4, GTM, pixels, cookies)', 'Pre-consent risk detection', 'PDF report', 'All violations (70% visibility)'],
-            pt: ['Auditoria completa (GA4, GTM, pixels, cookies)', 'Riscos antes do consentimento', 'Relatório em PDF', 'Todas violações (70% visibilidade)'],
+            en: ['Technical audit (GA4, GTM, pixels)', 'Pre-consent technical indicators', 'PDF report', 'Risk details with 70% tag visibility'],
+            pt: ['Auditoria técnica (GA4, GTM e pixels)', 'Indicadores técnicos antes do consentimento', 'Relatório em PDF', 'Detalhes de risco com 70% das tags visíveis'],
         },
     },
     premium: {
@@ -53,8 +53,8 @@ const PLAN_META: Record<SubscriptionPlan, {
         icon: <Crown className="w-5 h-5" />,
         audits: { en: '200 scans per week', pt: '200 escaneamentos por semana' },
         highlights: {
-            en: ['Everything in Pro', 'Full evidence export (JSON)', 'Network, cookies & dataLayer tabs', 'Consent timeline', 'LGPD/GDPR exposure estimate', 'Priority support'],
-            pt: ['Tudo do Pro', 'Evidências completas (JSON)', 'Network, cookies e dataLayer', 'Timeline de consentimento', 'Estimativa de exposição LGPD/GDPR', 'Suporte prioritário'],
+            en: ['Everything in Pro', '100% tag visibility', 'Exact source evidence when observable', 'Excel export', 'Technical regulatory context', 'Priority support'],
+            pt: ['Tudo do Pro', '100% de visibilidade das tags', 'Evidência de código quando observável', 'Exportação Excel', 'Contexto regulatório técnico', 'Suporte prioritário'],
         },
     },
 };
