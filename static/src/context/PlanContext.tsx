@@ -51,7 +51,7 @@ export const PLAN_CONFIGS: Record<PlanType, {
         badge: '🆓',
         color: 'from-gray-400 to-gray-500',
         features: [
-            '3 escaneamentos por mês',
+            '10 escaneamentos por semana',
             'Dashboard básico',
             '30% de visibilidade dos dados',
             'Contagem de tags detectadas',
@@ -66,7 +66,7 @@ export const PLAN_CONFIGS: Record<PlanType, {
             'Localização exata no HTML'
         ],
         limits: {
-            scansPerWeek: 3,
+            scansPerWeek: 10,
             showScripts: false,
             showLineNumbers: false,
             showViolationDetails: false,
@@ -84,13 +84,13 @@ export const PLAN_CONFIGS: Record<PlanType, {
     },
     pro: {
         name: 'Pro',
-        price: 497,
-        priceLabel: 'R$ 497,00/mês',
+        price: 49.90,
+        priceLabel: 'R$ 49,90/mês',
         badge: '⭐',
         color: 'from-blue-500 to-indigo-600',
         features: [
-            '50 escaneamentos por mês',
-            'Dashboard detalhado — 100% de visibilidade',
+            '50 escaneamentos por semana',
+            'Dashboard detalhado — 70% de visibilidade',
             'Relatórios PDF profissionais',
             'Detalhes completos de violações LGPD',
             'Exportação PDF e JSON',
@@ -125,12 +125,12 @@ export const PLAN_CONFIGS: Record<PlanType, {
     },
     premium: {
         name: 'Premium',
-        price: 2497,
-        priceLabel: 'R$ 2.497,00/mês',
+        price: 149.90,
+        priceLabel: 'R$ 149,90/mês',
         badge: '👑',
         color: 'from-amber-500 to-orange-600',
         features: [
-            'Escaneamentos Ilimitados',
+            '200 escaneamentos por semana',
             'Monitoramento Contínuo — alertas automáticos',
             '100% de visibilidade dos dados',
             'Tudo do plano Pro',
@@ -145,18 +145,18 @@ export const PLAN_CONFIGS: Record<PlanType, {
         ],
         blockedFeatures: [],
         limits: {
-            scansPerWeek: -1,
+            scansPerWeek: 200,
             showScripts: true,
             showLineNumbers: true,
             showViolationDetails: true,
-            showHistory: true,
+            showHistory: false,
             jsonExport: true,
             pdfExport: true,
             excelExport: true,
-            deepAnalysis: true,
+            deepAnalysis: false,
             aiChat: true,
             aiChatMessagesPerDay: -1,
-            realTimeAnalysis: true,
+            realTimeAnalysis: false,
             dashboardDetails: 'full',
             visibilityPercentage: 100
         }
@@ -186,27 +186,27 @@ export const UPGRADE_COPY = {
     free: {
         title: '🔒 Você está vendo apenas 30%',
         subtitle: 'Desbloqueie violações, PDF e 100% dos dados com o Pro',
-        cta: 'Assinar Pro — R$ 497,00/mês',
+        cta: 'Assinar Pro — R$ 49,90/mês',
         urgency: '⚡ Análise completa, 50 escaneamentos/mês'
     },
     pro: {
-        title: '⭐ Falta pouco para o máximo',
-        subtitle: 'Acesse monitoramento contínuo, API, alertas e Excel com o Premium',
-        cta: 'Upgrade para Premium — R$ 2.497,00/mês',
-        urgency: '🔥 Ilimitado + API + Monitoramento Contínuo'
+        title: '⭐ Recursos adicionais',
+        subtitle: 'Acesse 100% da visibilidade, evidências completas e Excel com o Premium',
+        cta: 'Upgrade para Premium — R$ 149,90/mês',
+        urgency: '200 scans/semana + evidências completas'
     }
 };
 
 export const BLURRED_MESSAGES = {
     scripts: 'View-source avançado com posição exata no HTML é exclusivo do Premium',
     showLineNumbers: 'Números de linha disponíveis apenas no Premium',
-    history: 'Histórico de escaneamentos disponível apenas no Premium',
+    history: 'Histórico persistente ainda não está disponível no ambiente de produção',
     details: 'Detalhes de violações disponíveis no plano Pro ou superior',
-    realtime: 'Análise em tempo real é exclusiva do Premium',
+    realtime: 'Monitoramento contínuo ainda não está disponível no ambiente de produção',
     jsonExport: 'Exportação JSON disponível a partir do plano Pro',
     pdfExport: 'Exportação PDF disponível a partir do plano Pro',
     excelExport: 'Exportação Excel é exclusiva do Premium',
-    deepAnalysis: 'Deep Scan avançado disponível apenas no Premium'
+    deepAnalysis: 'Deep Scan multi-página ainda não está disponível no ambiente de produção'
 };
 
 /**
