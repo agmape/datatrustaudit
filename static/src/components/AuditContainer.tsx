@@ -11,7 +11,6 @@ import { BarChart3 } from 'lucide-react';
 import { usePlan } from '@/context/PlanContext';
 import { useAuth } from '@/context/AuthContext';
 import { useI18n } from '@/context/I18nContext';
-import { useNavigate } from 'react-router-dom';
 
 interface Tag {
     id: string;
@@ -257,7 +256,6 @@ const normalizeAuditResult = (raw: any): NewAuditResult => {
 
 const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
   const { t } = useI18n();
-  const navigate = useNavigate();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [auditResult, setAuditResult] = useState<NewAuditResult | null>(null);
@@ -344,20 +342,16 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
       return;
     }
 
-    // ── 2. Verifica autenticação ─────────────────────────────────────────────
+    // ── 2. Auditoria pública ──────────────────────────────────────────────────
+    // Login não é necessário. Visitantes anônimos seguem como plano Free.
     if (!isAuthenticated) {
-      console.warn('⚠️ [DEBUG] Usuário não autenticado — redirecionando para login');
-      localStorage.setItem('datatrust-pending-scan-url', targetUrl);
-      localStorage.setItem('gtm-redirect-after-auth', `/?scanUrl=${encodeURIComponent(targetUrl)}`);
-      toast({ title: t('nav.signup'), description: t('audit.signup_required_to_scan') });
-      navigate('/auth?mode=signup');
-      return;
+      console.info('ℹ️ [DEBUG] Auditoria pública sem autenticação');
     }
 
     // ── 3. Resolve identidade real (ignora uiMockState completamente) ────────
     const isAdminUser = Boolean(user?.is_admin) || Boolean(plan.isAdmin);
     // realPlanType: para o backend, admin é sempre 'premium' (sem mock)
-    const realPlanType: string = isAdminUser ? 'premium' : plan.type;
+    const realPlanType: string = isAdminUser ? 'premium' : (isAuthenticated ? plan.type : 'free');
     const scanDomain = parsedUrl.hostname.replace(/^www\./i, '').toLowerCase();
 
     console.log('🔥 [DEBUG] Identidade resolvida:', {
@@ -369,7 +363,7 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
     });
 
     // ── 4. Domain-lock Premium (só para não-admin) ───────────────────────────
-    if (!isAdminUser && plan.type === 'premium') {
+    if (isAuthenticated && !isAdminUser && plan.type === 'premium') {
       const storedDomain = localStorage.getItem('datatrust-premium-scan-domain');
       if (storedDomain && storedDomain !== scanDomain) {
         toast({ title: t('audit.limit_reached'), description: t('audit.premium_domain_locked'), variant: 'destructive' });
