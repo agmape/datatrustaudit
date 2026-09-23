@@ -159,15 +159,51 @@ app.include_router(scans.router)
 app.include_router(audit.router)
 
 
-# Servir assets do frontend (Vite builda para /assets/)
-app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
+# Frontend static delivery.
+#
+# On Vercel, app.frontend() is the supported FastAPI integration and lets
+# Vercel promote the generated Vite files to its static CDN. Locally (where
+# plain FastAPI may not expose app.frontend), fall back to StaticFiles.
+#
+# IMPORTANT: never instantiate StaticFiles for a directory that does not exist.
+# Doing that at import time crashes the whole serverless function with
+# FUNCTION_INVOCATION_FAILED before /health can even respond.
+FRONTEND_INDEX = os.path.join(STATIC_DIR, "index.html")
+FRONTEND_ASSETS = os.path.join(STATIC_DIR, "assets")
+FRONTEND_AVAILABLE = os.path.isfile(FRONTEND_INDEX)
+VERCEL_FRONTEND_REGISTERED = False
+
+if FRONTEND_AVAILABLE:
+    _frontend = getattr(app, "frontend", None)
+    if callable(_frontend):
+        _frontend("/", directory=STATIC_DIR)
+        VERCEL_FRONTEND_REGISTERED = True
+        print(f"[OK] Vercel frontend registered from {STATIC_DIR}")
+    elif os.path.isdir(FRONTEND_ASSETS):
+        app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS), name="assets")
+        print(f"[OK] Static assets mounted from {FRONTEND_ASSETS}")
+else:
+    print(
+        f"[WARN] Frontend build not found at {STATIC_DIR}. "
+        "API will still start; run the Vite production build."
+    )
 
 
 @app.get("/")
 async def serve_index():
-    """Serve a página principal"""
+    """Serve the SPA root without making application startup depend on it."""
+    if not os.path.isfile(FRONTEND_INDEX):
+        return JSONResponse(
+            {
+                "status": "ok",
+                "service": "DataTrust Audit API",
+                "frontend": "build_not_found",
+                "health": "/health",
+            },
+            status_code=200,
+        )
     return FileResponse(
-        os.path.join(STATIC_DIR, "index.html"),
+        FRONTEND_INDEX,
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
     )
 
@@ -2200,9 +2236,12 @@ async def serve_spa(full_path: str):
     """Fallback route for client-side SPA navigation."""
     if full_path.startswith("assets/") or full_path.startswith("api/") or full_path.startswith("docs"):
         return JSONResponse({"error": "not found"}, status_code=404)
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if not os.path.exists(index_path):
-        return JSONResponse({"error": "frontend build not found"}, status_code=404)
+    index_path = FRONTEND_INDEX
+    if not os.path.isfile(index_path):
+        return JSONResponse(
+            {"error": "frontend build not found", "health": "/health"},
+            status_code=404,
+        )
     return FileResponse(
         index_path,
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
