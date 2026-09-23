@@ -15,7 +15,9 @@ import {
     Globe,
     PieChart,
     Sparkles,
-    FileSpreadsheet, Activity,
+    FileSpreadsheet,
+    Lock,
+    Activity,
     Box,
     ChevronDown,
     ChevronUp,
@@ -113,8 +115,35 @@ interface NewAuditResult {
     pageReports?: any[];
 }
 
+/** Locked export button — shows lock icon and opens upgrade modal on click */
+const LockedExportButton = ({ label, icon: Icon, feature, onUpgrade }: {
+    label: string;
+    icon: React.ElementType;
+    feature: string;
+    onUpgrade: (f: string) => void;
+}) => (
+    <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onUpgrade(feature)}
+        className="flex items-center gap-2 opacity-50 cursor-not-allowed border border-dashed border-gray-300 dark:border-gray-600"
+        title={`Bloqueado — faça upgrade para acessar ${label}`}
+    >
+        <Lock className="w-3 h-3" />
+        <Icon className="w-4 h-4" />
+        {label}
+    </Button>
+);
+
 const NewAuditResults = ({ result, scanId }: { result: NewAuditResult, scanId?: string }) => {
-    const { t } = useI18n();
+    const { t } = useI18n();    const limits = {
+        showViolationDetails: true,
+        showLineNumbers: true,
+        visibilityPercentage: 100,
+    };
+    const isFeatureAvailable = (_feature: string) => true;
+    const handleUpgradeLock = (_feature: string) => {};
+
 
     // Accordion state for duplicates section
     const [dupSectionOpen, setDupSectionOpen] = useState(true);
@@ -255,7 +284,11 @@ ${violationsText}
                             </div>
                         </div>
                         <div className="bg-white/10 rounded-lg p-4 text-center backdrop-blur-sm">
-                            <div className="text-lg font-bold text-orange-300 line-clamp-2 leading-tight mt-1">{result.privacy.estimatedRiskExposure}</div>
+                            {limits.showViolationDetails ? (
+                                <div className="text-lg font-bold text-orange-300 line-clamp-2 leading-tight mt-1">{result.privacy.estimatedRiskExposure}</div>
+                            ) : (
+                                <button
+                                    onClick={() => handleUpgradeLock('showViolationDetails')}
                                     className="text-lg font-bold text-orange-300 blur-sm select-none cursor-pointer hover:blur-none transition-all mt-1"
                                     title={t('result.estimated_risk_hint')}
                                 >
@@ -266,24 +299,43 @@ ${violationsText}
                         </div>
                     </div>
 
-                    {/* ─── Export buttons — all available ─── */}
+                    {/* ─── Export buttons (plan-gated) ─── */}
                     <div className="flex gap-2 mt-6 flex-wrap">
+                        {/* Copy: always available */}
                         <Button variant="secondary" size="sm" onClick={handleCopyReport} className="flex items-center gap-2">
                             <Copy className="w-4 h-4" />
                             {t('buttons.copy')}
                         </Button>
-                        <Button variant="secondary" size="sm" onClick={handleExportJSON} className="flex items-center gap-2">
-                            <Download className="w-4 h-4" />
-                            {t('buttons.export_json')}
-                        </Button>
-                        <Button variant="secondary" size="sm" onClick={handleExportPDF} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-800">
-                            <FileText className="w-4 h-4" />
-                            {t('buttons.export_pdf')}
-                        </Button>
-                        <Button variant="secondary" size="sm" onClick={handleExportExcel} className="flex items-center gap-2 bg-green-100 hover:bg-green-200 text-green-800">
-                            <FileSpreadsheet className="w-4 h-4" />
-                            {t('buttons.export_excel')}
-                        </Button>
+
+                        {/* JSON: Pro+ */}
+                        {isFeatureAvailable('jsonExport') ? (
+                            <Button variant="secondary" size="sm" onClick={handleExportJSON} className="flex items-center gap-2">
+                                <Download className="w-4 h-4" />
+                                {t('buttons.export_json')}
+                            </Button>
+                        ) : (
+                            <LockedExportButton label={t('buttons.export_json')} icon={Download} feature="jsonExport" onUpgrade={handleUpgradeLock} />
+                        )}
+
+                        {/* PDF: Pro+ */}
+                        {isFeatureAvailable('pdfExport') ? (
+                            <Button variant="secondary" size="sm" onClick={handleExportPDF} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-800">
+                                <FileText className="w-4 h-4" />
+                                {t('buttons.export_pdf')}
+                            </Button>
+                        ) : (
+                            <LockedExportButton label={t('buttons.export_pdf')} icon={FileText} feature="pdfExport" onUpgrade={handleUpgradeLock} />
+                        )}
+
+                        {/* Excel: Premium only */}
+                        {isFeatureAvailable('excelExport') ? (
+                            <Button variant="secondary" size="sm" onClick={handleExportExcel} className="flex items-center gap-2 bg-green-100 hover:bg-green-200 text-green-800">
+                                <FileSpreadsheet className="w-4 h-4" />
+                                {t('buttons.export_excel')}
+                            </Button>
+                        ) : (
+                            <LockedExportButton label={t('buttons.export_excel')} icon={FileSpreadsheet} feature="excelExport" onUpgrade={handleUpgradeLock} />
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -298,7 +350,7 @@ ${violationsText}
                         <BarChart3 className="w-5 h-5 text-blue-400" />
                         {t('result.tags_by_category')}
                         <Badge className="ml-auto text-xs bg-slate-800 text-slate-300 border border-slate-700">
-                            Todos os achados
+                            {limits.visibilityPercentage}% {t('result.visible')}
                         </Badge>
                     </CardTitle>
                 </CardHeader>
@@ -322,7 +374,7 @@ ${violationsText}
                         })}
                     </div>
 
-                    {/* Duplicates — Disponível — Collapsible container + simple list */}
+                    {/* Duplicates — Pro+ — Collapsible container + simple list */}
                     {result.duplicates && result.duplicates.length > 0 && (
                         <FeatureGate feature="showViolationDetails" featureName="Tags duplicadas">
                             <div className="mt-4 rounded-xl border border-orange-500/30 bg-slate-900/90 shadow-md overflow-hidden">
@@ -502,9 +554,9 @@ ${violationsText}
                     <GTMQualityPanel data={result.gtmQuality || null} />
                 </TabsContent>
 
-                {/* AI Deep Analysis — Disponível */}
+                {/* AI Deep Analysis — Premium only */}
                 <TabsContent value="deep" className="mt-6">
-                    <FeatureGate feature="deepAnalysis" featureName="Análise completa">
+                    <FeatureGate feature="deepAnalysis" featureName="Análise PRO">
                         <DeepAnalysisPanel
                             url={result.url}
                             detectedTags={result.tags}
@@ -513,7 +565,7 @@ ${violationsText}
                     </FeatureGate>
                 </TabsContent>
 
-                {/* Timeline — Disponível */}
+                {/* Timeline — Premium only */}
                 <TabsContent value="timeline" className="mt-6">
                     <FeatureGate feature="showLineNumbers" featureName="Script Timeline com linha de código">
                         <ScriptTimeline
@@ -583,7 +635,21 @@ ${violationsText}
                         <CardHeader>
                             <CardTitle>📋 {t('result.tag_list_title')}</CardTitle>
                             <CardDescription>
-                                {t('result.tags_in_source').replace('{n}', String(result.tags.length))}
+                                {hasMoreTags ? (
+                                    <span className="flex items-center gap-2">
+                                        <Lock className="w-3 h-3" />
+                                        {t('result.showing_of').replace('{visible}', String(visibleTagCount)).replace('{total}', String(result.tags.length)).replace('{pct}', String(limits.visibilityPercentage))}{' '}
+                                        <button
+                                            className="text-blue-600 underline hover:no-underline"
+                                            onClick={() => handleUpgradeLock('showViolationDetails')}
+                                        >
+                                            {t('result.upgrade_to_see_all')}
+                                        </button>
+                                        )
+                                    </span>
+                                ) : (
+                                    t('result.tags_in_source').replace('{n}', String(result.tags.length))
+                                )}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -596,9 +662,12 @@ ${violationsText}
                                             <th className="text-left p-3 font-semibold">{t('tracker.type_label')}</th>
                                             <th className="text-left p-3 font-semibold flex items-center gap-1.5">
                                                 {t('tracker.line_in_code')}
+                                                {!isFeatureAvailable('showLineNumbers') && <Lock className="w-3 h-3 text-amber-500" />}
                                             </th>
-                                            {/* Tag ID / pattern — Disponível */}
-                                            <th className="text-left p-3 font-semibold">{t('tracker.id_pattern')}</th>
+                                            {/* Tag ID / pattern — Pro+ */}
+                                            {isFeatureAvailable('showViolationDetails') && (
+                                                <th className="text-left p-3 font-semibold">{t('tracker.id_pattern')}</th>
+                                            )}
                                             <th className="text-left p-3 font-semibold">{t('result.risk_lgpd')}</th>
                                             <th className="text-left p-3 font-semibold">{t('result.status')}</th>
                                         </tr>
@@ -626,20 +695,25 @@ ${violationsText}
                                                     </Badge>
                                                 </td>
                                                 <td className="p-3">
-                                                    {(tag.lineNumber && tag.lineNumber > 0)
-                                                        ? <code className="text-sm bg-gray-100 px-2 py-0.5 rounded">{tag.lineNumber}</code>
-                                                        : <span className="text-xs text-gray-400 italic">{t('tracker.loaded_dynamically')}</span>}>
+                                                    {isFeatureAvailable('showLineNumbers') ? (
+                                                        (tag.lineNumber && tag.lineNumber > 0)
+                                                            ? <code className="text-sm bg-gray-100 px-2 py-0.5 rounded">{tag.lineNumber}</code>
+                                                            : <span className="text-xs text-gray-400 italic">{t('tracker.loaded_dynamically')}</span>
+                                                    ) : (
+                                                        <Badge variant="outline" className="text-[10px] uppercase bg-amber-50 text-amber-600 border-amber-200 gap-1 opacity-70 cursor-pointer hover:opacity-100 transition-opacity" onClick={() => handleUpgradeLock('showLineNumbers')}>
                                                             <Lock className="w-2.5 h-2.5" />
                                                             {t('result.locked_premium')}
                                                         </Badge>
                                                     )}
                                                 </td>
-                                                {/* ID/Pattern — Disponível */}
-                                                <td className="p-3">
-                                                    <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                                                        {tag.tagId || (tag.matchedPattern ? tag.matchedPattern.substring(0, 20) : '—')}
-                                                    </code>
-                                                </td>
+                                                {/* ID/Pattern — Pro+ */}
+                                                {isFeatureAvailable('showViolationDetails') && (
+                                                    <td className="p-3">
+                                                        <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                                                            {tag.tagId || (tag.matchedPattern ? tag.matchedPattern.substring(0, 20) : '—')}
+                                                        </code>
+                                                    </td>
+                                                )}
                                                 <td className="p-3">
                                                     <Badge className={
                                                         tag.lgpdRisk === 'critical' ? 'bg-red-100 text-red-800' :
@@ -659,6 +733,14 @@ ${violationsText}
                                                 </td>
                                             </tr>
                                         ))}
+
+                                        {/* Locked rows hint */}
+                                        {hasMoreTags && (
+                                            <tr className="border-b border-dashed border-gray-200 bg-gray-50/50">
+                                                <td colSpan={7} className="p-3 text-center">
+                                                    <button
+                                                        className="flex items-center gap-2 mx-auto text-sm text-gray-400 hover:text-blue-600"
+                                                        onClick={() => handleUpgradeLock('showViolationDetails')}
                                                     >
                                                         <Lock className="w-3 h-3" />
                                                         {t('result.hidden_tags').replace('{n}', String(result.tags.length - visibleTagCount))}
@@ -678,12 +760,12 @@ ${violationsText}
                     <OutreachEnginePanel
                         result={result}
                         onRescan={undefined}
-                        onExportPDF={handleExportPDF}
-                        onExportExcel={handleExportExcel}
-                        onExportJSON={handleExportJSON}
-                        canExportPDF={true}
-                        canExportExcel={true}
-                        canExportJSON={true}
+                        onExportPDF={isFeatureAvailable('pdfExport') ? handleExportPDF : undefined}
+                        onExportExcel={isFeatureAvailable('excelExport') ? handleExportExcel : undefined}
+                        onExportJSON={isFeatureAvailable('jsonExport') ? handleExportJSON : undefined}
+                        canExportPDF={isFeatureAvailable('pdfExport')}
+                        canExportExcel={isFeatureAvailable('excelExport')}
+                        canExportJSON={isFeatureAvailable('jsonExport')}
                     />
                 </TabsContent>
 
