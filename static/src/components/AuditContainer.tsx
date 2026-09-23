@@ -49,6 +49,7 @@ interface NewAuditResult {
         compliance_score: number;
     };
     score: number;
+    scoreAvailable?: boolean;
     scores?: {
         auditScore: number;
         trackingQualityScore: number;
@@ -221,6 +222,7 @@ const normalizeAuditResult = (raw: any): NewAuditResult => {
     loadingOrder: safeRaw.loadingOrder || [],
     privacy,
     score: score ?? 0,
+    scoreAvailable: safeRaw.scoreAvailable ?? score !== null,
     scores,
     gtmQuality,
     events,
