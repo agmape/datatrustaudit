@@ -195,12 +195,6 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
 
     limit_note = None
     visible_tags = tags
-    if plan == "free":
-        visible_tags = tags[:max(1, int(len(tags) * 0.30))] if tags else []
-        limit_note = "Free plan shows 30% data visibility with limited source detail."
-    elif plan == "pro":
-        visible_tags = tags[:max(1, int(len(tags) * 0.70))] if tags else []
-        limit_note = "Pro plan shows 70% data visibility. Premium unlocks full source mapping."
 
     response = {
         "success": True,
@@ -326,12 +320,6 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
     response["evidence_count"] = get_evidence_count(response)
     response["scan_credit_consumed"] = should_consume_scan_credit(response)
 
-    if plan == "free":
-        response["violations"] = []
-        response["privacy"]["manualVerification"].append("Free plan hides violation details; upgrade to Pro or Premium for full issue details.")
-    elif plan == "pro":
-        response["privacy"]["manualVerification"].append("Pro plan hides exact source line mapping; Premium unlocks source hints when available.")
-
     return response
 
 
@@ -402,74 +390,13 @@ async def run_direct_audit(
     except ValueError:
         return _failed_response("INVALID_URL", status_code=400)
 
-    # ── 2. Optional identity and server-side entitlements ────────────────────
-    # Public scans are allowed without authentication. Anonymous callers always
-    # run with the Free plan and are not persisted against a user account.
-    plan = _resolve_plan(
-        payload.plan or "free",
-        current_user,
-        is_admin_payload=bool(payload.is_admin),
-    )
-    is_admin = bool(getattr(current_user, "is_admin", False)) if current_user is not None else False
-
-    # Authenticated accounts keep their persistent quota/history behaviour.
-    # Anonymous audits intentionally do not require DATABASE_URL or a user row.
-    if current_user is not None:
-        if os.getenv("VERCEL") and not PERSISTENT_DATABASE_CONFIGURED:
-            return JSONResponse(
-                {
-                    "success": False,
-                    "status": "failed",
-                    "errorCode": "DATABASE_REQUIRED",
-                    "message": "Configure a persistent PostgreSQL DATABASE_URL before enabling authenticated production scans.",
-                },
-                status_code=503,
-            )
-
-        limit = get_weekly_limit(plan, is_admin)
-        if not is_admin and limit != -1:
-            now = datetime.utcnow()
-            week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-            reserved_or_consumed = db.query(Scan).filter(
-                Scan.user_id == current_user.id,
-                Scan.created_at >= week_start,
-                or_(
-                    Scan.scan_credit_consumed.is_(True),
-                    Scan.status.in_(["pending", "processing"]),
-                ),
-            ).count()
-            if reserved_or_consumed >= limit:
-                return JSONResponse(
-                    {
-                        "success": False,
-                        "status": "failed",
-                        "errorCode": "QUOTA_EXCEEDED",
-                        "message": f"Weekly scan limit reached ({limit} for {plan}).",
-                        "weekly_limit": limit,
-                        "scans_reserved_or_used": reserved_or_consumed,
-                    },
-                    status_code=429,
-                )
-
+    # ── 2. Public full-access mode ───────────────────────────────────────────
+    # No login, subscription, quota, plan or database persistence is required
+    # to run an audit. The internal "premium" value is kept only as a backwards-
+    # compatible switch so existing analyzers expose every available finding.
+    plan = "premium"
+    is_admin = False
     scan_record: Optional[Scan] = None
-    if current_user is not None:
-        try:
-            scan_record = Scan(user_id=current_user.id, url=url, status="processing", scan_credit_consumed=False)
-            db.add(scan_record)
-            db.commit()
-            db.refresh(scan_record)
-        except Exception as exc:
-            db.rollback()
-            print(f"[api/audit] Scan persistence unavailable: {exc}")
-            return JSONResponse(
-                {
-                    "success": False,
-                    "status": "failed",
-                    "errorCode": "DATABASE_REQUIRED",
-                    "message": "Persistent database unavailable for authenticated scan history/quota.",
-                },
-                status_code=503,
-            )
 
     # ── 3. Browser scan with graceful degradation ─────────────────────────────
     scan = None
