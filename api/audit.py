@@ -2,11 +2,14 @@ import asyncio
 import ipaddress
 import re
 import socket
+from datetime import datetime, timedelta
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -14,8 +17,9 @@ from api.auth import get_current_user
 from audit_engine.browser_fetcher import browser_scan
 from audit_engine.url_security import UnsafeURLError, validate_public_url
 from audit_engine.orchestrator import run_audit
-from audit_engine.credit_rules import should_consume_scan_credit, get_evidence_count
-from db.models import User
+from audit_engine.credit_rules import should_consume_scan_credit, get_evidence_count, get_weekly_limit
+from db.database import get_db
+from db.models import User, Scan
 
 
 router = APIRouter(prefix="/api/audit", tags=["Audit"])
@@ -358,28 +362,106 @@ def _resolve_plan(payload_plan: str, current_user: Optional[User], is_admin_payl
 
     user_plan = getattr(current_user, "plan", None)
     if user_plan in VALID_PLANS:
+        if user_plan in {"pro", "premium"} and not bool(getattr(current_user, "has_active_subscription", False)):
+            return "free"
         return user_plan
 
     return "free"
 
 
+def _finalize_scan_record(db: Session, record: Optional[Scan], status: str, response: Optional[dict] = None) -> None:
+    if record is None:
+        return
+    try:
+        record.status = status
+        record.completed_at = datetime.utcnow()
+        if response is not None:
+            record.score = response.get("score")
+            record.raw_data = response
+            record.scan_method = response.get("scanMethod")
+            record.scan_credit_consumed = bool(response.get("scan_credit_consumed"))
+        else:
+            record.scan_credit_consumed = False
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        print(f"[api/audit] Could not persist scan result: {exc}")
+
+
 @router.post("")
 @router.post("/")
-async def run_direct_audit(payload: AuditRequest, current_user: Optional[User] = Depends(get_current_user)):
+async def run_direct_audit(
+    payload: AuditRequest,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     # ── 1. Valida e sanitiza URL ─────────────────────────────────────────────
     try:
         url = normalize_url(payload.url)
     except ValueError:
         return _failed_response("INVALID_URL", status_code=400)
 
-    # ── 2. Resolve plano (nunca usa estado mockado do admin) ─────────────────
+    # ── 2. Authentication and server-side entitlement/quota ─────────────────
+    if current_user is None:
+        return JSONResponse(
+            {"success": False, "status": "failed", "errorCode": "AUTH_REQUIRED", "message": "Authentication required to run a scan."},
+            status_code=401,
+        )
+
     plan = _resolve_plan(
         payload.plan or "free",
         current_user,
         is_admin_payload=bool(payload.is_admin),
     )
+    is_admin = bool(getattr(current_user, "is_admin", False))
+    limit = get_weekly_limit(plan, is_admin)
 
-    # ── 3. Browser scan com graceful degradation ─────────────────────────────
+    if not is_admin and limit != -1:
+        now = datetime.utcnow()
+        week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        reserved_or_consumed = db.query(Scan).filter(
+            Scan.user_id == current_user.id,
+            Scan.created_at >= week_start,
+            or_(
+                Scan.scan_credit_consumed.is_(True),
+                Scan.status.in_(["pending", "processing"]),
+            ),
+        ).count()
+        if reserved_or_consumed >= limit:
+            return JSONResponse(
+                {
+                    "success": False,
+                    "status": "failed",
+                    "errorCode": "QUOTA_EXCEEDED",
+                    "message": f"Weekly scan limit reached ({limit} for {plan}).",
+                    "weekly_limit": limit,
+                    "scans_reserved_or_used": reserved_or_consumed,
+                },
+                status_code=429,
+            )
+
+    scan_record: Optional[Scan] = None
+    try:
+        scan_record = Scan(user_id=current_user.id, url=url, status="processing", scan_credit_consumed=False)
+        db.add(scan_record)
+        db.commit()
+        db.refresh(scan_record)
+    except Exception as exc:
+        db.rollback()
+        print(f"[api/audit] Scan persistence unavailable: {exc}")
+        # Persistent quotas require DATABASE_URL/PostgreSQL. Do not pretend they
+        # are enforced if the database itself is unavailable.
+        return JSONResponse(
+            {
+                "success": False,
+                "status": "failed",
+                "errorCode": "DATABASE_REQUIRED",
+                "message": "Persistent database unavailable. Configure DATABASE_URL (PostgreSQL) before running production scans.",
+            },
+            status_code=503,
+        )
+
+    # ── 3. Browser scan with graceful degradation ─────────────────────────────
     scan = None
     try:
         scan = await asyncio.wait_for(
@@ -400,15 +482,19 @@ async def run_direct_audit(payload: AuditRequest, current_user: Optional[User] =
                 "O site demorou mais de 90s. Resultados baseados em fallback estático (sem JS/runtime)."
             )
         except Exception as fb_exc:
+            _finalize_scan_record(db, scan_record, "failed")
             return _failed_response("TIMEOUT", [{
                 "message": f"Timeout de 90s e fallback estático também falhou: {fb_exc}"
             }])
 
     except UnsafeURLError as exc:
+        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("INVALID_URL", [{"message": str(exc)}], status_code=400)
     except (socket.gaierror, OSError) as exc:
+        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
     except Exception as exc:
+        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
 
     # ── 4. Motor de auditoria ─────────────────────────────────────────────────
@@ -448,8 +534,13 @@ async def run_direct_audit(payload: AuditRequest, current_user: Optional[User] =
                     response["errorCode"] = "FETCH_FAILED"
                     response["message"] = _friendly_message("FETCH_FAILED")
 
+        if scan_record is not None:
+            response["scan_id"] = str(scan_record.id)
+        final_status = "completed" if response.get("status") == "completed" else response.get("status", "partial")
+        _finalize_scan_record(db, scan_record, final_status, response)
         return JSONResponse(response)
 
     except Exception as exc:
         print(f"[api/audit] Erro no motor de auditoria: {exc}")
+        _finalize_scan_record(db, scan_record, "failed")
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
