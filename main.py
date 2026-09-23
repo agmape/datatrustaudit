@@ -206,12 +206,7 @@ FRONTEND_AVAILABLE = os.path.isfile(FRONTEND_INDEX)
 VERCEL_FRONTEND_REGISTERED = False
 
 if FRONTEND_AVAILABLE:
-    _frontend = getattr(app, "frontend", None)
-    if callable(_frontend):
-        _frontend("/", directory=STATIC_DIR)
-        VERCEL_FRONTEND_REGISTERED = True
-        print(f"[OK] Vercel frontend registered from {STATIC_DIR}")
-    elif os.path.isdir(FRONTEND_ASSETS):
+    if os.path.isdir(FRONTEND_ASSETS):
         app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS), name="assets")
         print(f"[OK] Static assets mounted from {FRONTEND_ASSETS}")
 else:
@@ -1573,9 +1568,21 @@ def plan_strip_report(report: dict, plan: str) -> None:
     report.pop("viewSourceInfo", None)
 
 
-# Dependency for scanner
-from audit_engine.scanner import PlaywrightAuditScanner
-scanner = PlaywrightAuditScanner()
+# Scanner is optional at boot. Playwright/browser binaries are loaded only
+# when the scan endpoint is actually used, so Vercel cold starts stay safe.
+scanner = None
+def _get_legacy_scanner():
+    global scanner
+    if scanner is not None:
+        return scanner
+    try:
+        from audit_engine.scanner import PlaywrightAuditScanner
+        scanner = PlaywrightAuditScanner()
+        return scanner
+    except Exception as exc:
+        IMPORT_ERRORS["legacy_scanner"] = f"{type(exc).__name__}: {exc}"
+        print(f"[ERROR] Legacy scanner unavailable: {IMPORT_ERRORS['legacy_scanner']}")
+        return None
 
 @app.post("/analyze")
 async def analyze_url(request: Request):
@@ -1590,7 +1597,17 @@ async def analyze_url(request: Request):
         if not target_url.startswith(("http://", "https://")):
             target_url = "https://" + target_url
             
-        scan_results = await scanner.scan(target_url)
+        _scanner = _get_legacy_scanner()
+        if _scanner is None:
+            return JSONResponse(
+                {
+                    "status": "error",
+                    "msg": "Browser scanner unavailable in this runtime.",
+                    "detail": IMPORT_ERRORS.get("legacy_scanner"),
+                },
+                status_code=503,
+            )
+        scan_results = await _scanner.scan(target_url)
         if scan_results.get("error") and not scan_results.get("html"):
             return JSONResponse({"status": "error", "msg": f"Fala ao carregar página: {scan_results['error']}"}, status_code=500)
             
