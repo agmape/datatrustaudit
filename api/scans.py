@@ -9,6 +9,7 @@ from db.models import User, Scan
 from api.auth import get_current_user
 from worker.tasks import run_website_audit
 from audit_engine.credit_rules import WEEKLY_SCAN_LIMITS, get_weekly_limit, can_perform_scan
+from audit_engine.url_security import UnsafeURLError, validate_public_url
 
 router = APIRouter(prefix="/api/scans", tags=["Scans"])
 
@@ -18,16 +19,12 @@ PRO_MAX_SCANS = int(os.getenv("PRO_MAX_SCANS", str(WEEKLY_SCAN_LIMITS["pro"])))
 PREMIUM_MAX_SCANS = int(os.getenv("PREMIUM_MAX_SCANS", str(WEEKLY_SCAN_LIMITS["premium"])))
 
 def normalize_url(url: str):
-    url = url.strip()
-    if not url.startswith("http://") and not url.startswith("https://"):
-        url = "https://" + url
-    parsed = urlparse(url)
-    if not parsed.netloc:
-        raise HTTPException(status_code=400, detail="Invalid URL format. Example: example.com")
-    # SSRF protection: check for localhost, 127.0.0.1, internal IPs can be added here
-    if "localhost" in parsed.netloc or "127.0.0.1" in parsed.netloc:
-        raise HTTPException(status_code=400, detail="Localhost scanning is disallowed.")
-    return url
+    """Validate scan URL against SSRF/private-network targets."""
+    try:
+        return validate_public_url(url)
+    except UnsafeURLError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @router.post("/")
 def create_scan(url: str, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
