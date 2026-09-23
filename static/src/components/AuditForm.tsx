@@ -51,7 +51,6 @@ const AuditForm = ({
   onNavigationComplete
 }: AuditFormProps) => {
   const { t } = useI18n();
-  const { isFeatureAvailable, setShowUpgradeModal, setBlockedFeature } = usePlan();
   const [activeTab, setActiveTab] = useState('url');
   const [recentUrls, setRecentUrls] = useState<string[]>([]);
 
@@ -154,7 +153,6 @@ const AuditForm = ({
                 <div className="font-bold text-[10px] uppercase tracking-wider">{t('home.tab_realtime')}</div>
                 <div className="text-[9px] opacity-40 font-medium hidden sm:block">{t('home.tab_realtime_desc')}</div>
               </div>
-              <Badge className="absolute -top-1.5 -right-1.5 text-[8px] px-1.5 py-0.5 bg-blue-600 border-0 font-black shadow-lg">PRO</Badge>
             </TabsTrigger>
           </TabsList>
 
@@ -212,53 +210,28 @@ const AuditForm = ({
               )}
             </div>
 
-            {/* View Source Option (Premium Box) */}
-            <div 
-              className={`flex items-center gap-5 p-6 rounded-2xl border transition-all ${
-                isFeatureAvailable('showScripts') 
-                  ? 'bg-white/5 border-white/5 shadow-inner' 
-                  : 'bg-white/[0.02] border-white/[0.02] opacity-40'
-              }`}
-            >
+            {/* Advanced source inspection — available to everyone */}
+            <div className="flex items-center gap-5 p-6 rounded-2xl border transition-all bg-white/5 border-white/5 shadow-inner">
               <div className="relative">
                 <Checkbox
                   id="view-source"
-                  checked={isFeatureAvailable('showScripts') ? useViewSource : false}
-                  onCheckedChange={(checked) => {
-                    if (!isFeatureAvailable('showScripts')) {
-                      setBlockedFeature('showScripts');
-                      setShowUpgradeModal(true);
-                      return;
-                    }
-                    setUseViewSource(checked as boolean)
-                  }}
+                  checked={useViewSource}
+                  onCheckedChange={(checked) => setUseViewSource(checked as boolean)}
                   className="w-6 h-6 rounded-lg border-white/10 bg-white/5 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 transition-all shadow-lg"
                 />
               </div>
-              <div 
-                className="flex-1 cursor-pointer"
-                onClick={() => {
-                  if (!isFeatureAvailable('showScripts')) {
-                    setBlockedFeature('showScripts');
-                    setShowUpgradeModal(true);
-                  }
-                }}
-              >
+              <div className="flex-1">
                 <label
                   htmlFor="view-source"
                   className="font-bold text-white flex items-center gap-2 cursor-pointer text-sm tracking-tight"
                 >
                   <Eye className="h-4 w-4 text-blue-400" />
                   {t('home.view_source')}
-                  {!isFeatureAvailable('showScripts') && <Lock className="h-3.5 w-3.5 text-white/20 ml-1" />}
                 </label>
                 <p className="text-xs text-white/40 mt-1 font-medium">
                   {t('home.view_source_desc')}
                 </p>
               </div>
-              <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[10px] font-black tracking-widest uppercase py-1 px-3">
-                PREMIUM
-              </Badge>
             </div>
 
             {/* Info Cards */}
