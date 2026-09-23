@@ -120,8 +120,8 @@ const ScriptTimeline = ({ tags, loadingOrder, hasConsentTool }: ScriptTimelinePr
               <div>
                 <h4 className="font-semibold text-red-800">⚠️ CMP Não Detectado</h4>
                 <p className="text-sm text-red-700 mt-1">
-                  Nenhuma ferramenta de consentimento (Cookiebot, OneTrust, Didomi) foi detectada 
-                  no site. Isso significa que <strong>todas as tags de tracking estão violando a LGPD</strong>.
+                  Nenhuma CMP conhecida foi observada neste scan. Isso é um sinal técnico que exige
+                  revisão manual; por si só, não prova violação da LGPD nem revela a base legal usada pelo site.
                 </p>
               </div>
             </div>
@@ -194,10 +194,7 @@ const ScriptTimeline = ({ tags, loadingOrder, hasConsentTool }: ScriptTimelinePr
                         <span className="text-gray-500">Linha no código:</span>
                         <span className="font-mono ml-2">
                           {tag.lineNumber || (
-                            <Badge variant="outline" className="text-[10px] uppercase bg-amber-50 text-amber-600 border-amber-200 gap-1 opacity-70">
-                              <Lock className="w-2.5 h-2.5" />
-                              Premium
-                            </Badge>
+                            <span className="text-xs text-gray-400 italic">não disponível neste scan</span>
                           )}
                         </span>
                       </div>
@@ -225,8 +222,8 @@ const ScriptTimeline = ({ tags, loadingOrder, hasConsentTool }: ScriptTimelinePr
 
                     {isViolation && (
                       <div className="mt-3 p-2 bg-red-100 rounded text-sm text-red-800">
-                        <strong>⚠️ Problema:</strong> Este script está carregando antes do consentimento do usuário, 
-                        violando o Art. 7º e 8º da LGPD.
+                        <strong>⚠️ Sinal técnico:</strong> o scanner observou este script antes de um sinal de consentimento.
+                        A conclusão jurídica depende da finalidade, base legal e contexto do tratamento.
                       </div>
                     )}
 
