@@ -58,6 +58,8 @@ class TagFinding:
             "matchedPattern": self.matched_pattern,
             "tagId": self.tag_id,
             "dataCollected": self.data_collected,
+            "dataCollectionBasis": "vendor_capability_catalog",
+            "dataCollectionObserved": False,
             "privacyRisk": self.privacy_risk,
             "lgpdRisk": self.privacy_risk,     # backward-compat alias
             "isBeforeConsent": self.is_before_consent,
