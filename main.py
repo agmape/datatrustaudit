@@ -98,12 +98,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+_allowed_origins = [origin.strip() for origin in _allowed_origins_env.split(",") if origin.strip()]
+if os.getenv("ENVIRONMENT", "development").lower() != "production" and not os.getenv("VERCEL"):
+    _allowed_origins.extend(["http://localhost:8080", "http://127.0.0.1:8080"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=list(dict.fromkeys(_allowed_origins)),
+    allow_credentials=bool(_allowed_origins),
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 @app.exception_handler(RequestValidationError)
@@ -1585,141 +1590,57 @@ def _get_legacy_scanner():
         return None
 
 @app.post("/analyze")
-async def analyze_url(request: Request):
-    try:
-        data = await request.json()
-        target_url = data.get("url", "").strip()
-        plan = data.get("plan", "free")
-        
-        if not target_url:
-            return JSONResponse({"status": "error", "msg": "URL não fornecida"}, status_code=400)
-            
-        if not target_url.startswith(("http://", "https://")):
-            target_url = "https://" + target_url
-            
-        _scanner = _get_legacy_scanner()
-        if _scanner is None:
-            return JSONResponse(
-                {
-                    "status": "error",
-                    "msg": "Browser scanner unavailable in this runtime.",
-                    "detail": IMPORT_ERRORS.get("legacy_scanner"),
-                },
-                status_code=503,
-            )
-        scan_results = await _scanner.scan(target_url)
-        if scan_results.get("error") and not scan_results.get("html"):
-            return JSONResponse({"status": "error", "msg": f"Fala ao carregar página: {scan_results['error']}"}, status_code=500)
-            
-        report = generate_audit_report(scan_results)
-        
-        # Add raw metrics for premium users if needed
-        report["metrics"] = {
-            "consoleWarnings": len(scan_results.get("console_messages", [])),
-            "networkRequests": len(scan_results.get("network_requests", []))
-        }
-        
-        # Strip details if plan is free
-        plan_strip_report(report, plan)
-        
-        return JSONResponse(report)
+async def analyze_url_legacy(request: Request):
+    """Legacy endpoint retained only to make old clients fail explicitly."""
+    return JSONResponse(
+        {
+            "status": "retired",
+            "message": "Legacy /analyze was retired. Use POST /api/audit.",
+            "canonicalEndpoint": "/api/audit",
+        },
+        status_code=410,
+    )
 
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse({"status": "error", "msg": str(e)}, status_code=500)
-        
 
 @app.post("/deep-analyze")
-async def deep_analyze(request: Request):
-    """Realiza auditoria em múltiplas páginas do mesmo domínio (Real Deep Scan)"""
-    try:
-        data = await request.json()
-        base_url = data.get("url", "").strip()
-        
-        if not base_url:
-            return JSONResponse({"status": "error", "msg": "URL não fornecida"}, status_code=400)
-            
-        if not base_url.startswith(("http://", "https://")):
-            base_url = "https://" + base_url
-            
-        # 1. Auditar página inicial
-        scan_results = await scanner.scan(base_url)
-        base_report = generate_audit_report(scan_results)
-        soup = BeautifulSoup(scan_results.get("html", ""), 'html.parser')
-        domain = urlparse(base_url).netloc
-        links = []
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            # Se for link relativo ou no mesmo domínio
-            if href.startswith('/') or domain in href:
-                full_url = urljoin(base_url, href)
-                # Evitar âncoras e a própria base_url
-                if '#' not in full_url and full_url != base_url and full_url != base_url + '/':
-                    links.append(full_url)
-        
-        # Pegar as 3 primeiras links únicos e interessantes
-        target_links = list(set(links))[:3]
-        
-        sub_reports = [base_report]
-        for link in target_links:
-            try:
-                sub_res = requests.get(link, timeout=10, headers=headers)
-                if sub_res.status_code == 200:
-                    sub_reports.append(generate_audit_report(sub_res.text, link))
-            except:
-                continue
-                
-        # 3. Consolidar resultados
-        total_violations = sum(r["lgpdAnalysis"]["totalViolations"] for r in sub_reports)
-        avg_score = sum(r["score"] for r in sub_reports) / len(sub_reports)
-        all_tags = []
-        for r in sub_reports:
-            all_tags.extend(r["tags"])
-            
-        # Remover duplicatas de tags baseadas em nome
-        unique_tags = {t["name"]: t for t in all_tags}.values()
-        
-        deep_report = {
-            "url": base_url,
-            "timestamp": datetime.now().isoformat(),
-            "pagesAudited": len(sub_reports),
-            "urls": [r["url"] for r in sub_reports],
-            "totalViolations": total_violations,
-            "averageScore": round(avg_score, 1),
-            "uniqueTagsFound": len(unique_tags),
-            "consolidatedTags": list(unique_tags),
-            "pageReports": sub_reports
-        }
-        
-        return JSONResponse({
-            "status": "ok",
-            "result": deep_report
-        })
-        
-    except Exception as e:
-        return JSONResponse({"status": "error", "msg": str(e)}, status_code=500)
+async def deep_analyze_unavailable(request: Request):
+    """Multi-page browser crawling is not reliable in the current Vercel runtime."""
+    return JSONResponse(
+        {
+            "status": "not_available",
+            "message": (
+                "Deep Scan multi-página não está habilitado em produção. "
+                "Ele requer fila, worker dedicado com Chromium e persistência."
+            ),
+            "simulated": False,
+        },
+        status_code=501,
+    )
 
 
 @app.get("/history")
-def history():
-    """Retorna histórico de auditorias"""
-    history_data = load_db()
-    return JSONResponse({
-        "history": history_data[::-1],  # Mais recentes primeiro
-        "total": len(history_data)
-    })
+def history_unavailable():
+    return JSONResponse(
+        {
+            "status": "not_available",
+            "message": (
+                "O histórico legado em arquivo local foi desativado. "
+                "Histórico persistente e autenticado requer PostgreSQL."
+            ),
+        },
+        status_code=501,
+    )
 
 
 @app.delete("/history")
-def clear_history():
-    """Limpa histórico de auditorias"""
-    save_db([])
-    return JSONResponse({
-        "status": "ok",
-        "message": "Histórico limpo"
-    })
+def clear_history_unavailable():
+    return JSONResponse(
+        {
+            "status": "not_available",
+            "message": "O histórico local legado está desativado.",
+        },
+        status_code=501,
+    )
 
 
 @app.get("/lgpd-info")
