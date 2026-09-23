@@ -8,24 +8,22 @@ import MinimalTopMenu from '@/components/MinimalTopMenu';
 
 const PaymentSuccess = () => {
     const [params] = useSearchParams();
-    const { activateSubscription, subscription } = useSubscription();
+    const { markPending } = useSubscription();
     const { language, t } = useI18n();
     const navigate = useNavigate();
 
     const planId = (params.get('plan') ?? localStorage.getItem('gtm-selected-plan') ?? 'pro') as SubscriptionPlan;
     const cycleParam = (params.get('cycle') ?? localStorage.getItem('gtm-billing-cycle') ?? 'monthly') as import('@/context/SubscriptionContext').BillingCycle;
-    const currency = params.get('currency') ?? 'USD';
-    const localPrice = params.get('price') ?? undefined;
-    const providerRef = params.get('ref') ?? undefined;
 
     useEffect(() => {
-        activateSubscription(planId, cycleParam, { currency, localPrice, providerRef });
+        // Redirect/query-string state is not proof of payment. Keep the UI in
+        // pending state until a trusted backend/webhook confirms entitlement.
+        markPending(planId, cycleParam);
         localStorage.removeItem('gtm-selected-plan');
-    }, []);
+    }, [markPending, planId, cycleParam]);
 
     const planName = planId === 'premium' ? 'Premium' : planId === 'pro' ? 'Pro' : 'Free';
     const isAnnual = cycleParam === 'annual';
-    const renewalDays = isAnnual ? 365 : 30;
     const tx = (key: string, vars: Record<string, string> = {}) =>
         Object.entries(vars).reduce((text, [name, value]) => text.replace(`{${name}}`, value), t(key));
 
@@ -49,8 +47,8 @@ const PaymentSuccess = () => {
                 <p className="text-white/50 mb-2">
                     {tx('payment.success_message', { plan: planName })}
                 </p>
-                <p className="text-white/30 text-sm mb-8">
-                    {t('payment.confirmation_email')}
+                <p className="text-white/40 text-sm mb-8">
+                    O plano só será liberado após confirmação do provedor de pagamento pelo backend.
                 </p>
 
                 {/* Plan activated badge */}
@@ -62,7 +60,7 @@ const PaymentSuccess = () => {
                         <div>
                             <div className="font-bold text-white">DataTrust Audit — {planName}</div>
                             <div className="text-green-400 text-xs font-semibold">
-                                ✓ {t('payment.subscription_active')}
+                                ⏳ Pagamento recebido — aguardando confirmação
                             </div>
                         </div>
                     </div>
@@ -72,8 +70,8 @@ const PaymentSuccess = () => {
                             <div>{new Date().toLocaleDateString(language === 'pt-BR' ? 'pt-BR' : 'en-US')}</div>
                         </div>
                         <div>
-                            <div className="text-white/30 mb-0.5">{t('payment.next_renewal')}</div>
-                            <div>{new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000).toLocaleDateString(language === 'pt-BR' ? 'pt-BR' : 'en-US')}</div>
+                            <div className="text-white/30 mb-0.5">Status do plano</div>
+                            <div>Pendente de validação do pagamento</div>
                         </div>
                     </div>
                 </div>
