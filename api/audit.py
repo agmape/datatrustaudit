@@ -187,8 +187,8 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
     issue_items = [_issue_from_recommendation(rec) for rec in recommendations if isinstance(rec, dict)]
 
     score = scores.get("auditScore") or scores.get("overall") or audit.get("score")
-    if score is None:
-        score = 70 if tags else 50
+    score_available = score is not None
+    normalized_score = int(max(0, min(100, score))) if score_available else None
 
     # Cookie names must come from browser evidence, never from vendor assumptions.
     observed_cookies = sorted(list((getattr(scan, "cookies", {}) or {}).keys()))
@@ -207,7 +207,8 @@ def _normalize_audit_response(url: str, plan: str, scan: Any, audit_result: Any)
         "status": "completed" if not getattr(scan, "error", None) else "partial",
         "plan": plan,
         "url": url,
-        "score": int(max(0, min(100, score))),
+        "score": normalized_score,
+        "scoreAvailable": score_available,
         "summary": {
             "totalTags": len(tags),
             "totalEvents": events.get("totalEvents", len(event_items)) if isinstance(events, dict) else len(event_items or []),
