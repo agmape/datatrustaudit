@@ -27,6 +27,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
+from .url_security import UnsafeURLError, validate_public_url, validate_redirect_target
 
 
 # ─── Stealth User-Agents (updated Dec 2024) ──────────────────────────────────
@@ -360,19 +361,11 @@ _BEFORE_CONSENT_SCRIPT = """
 
 
 def _sanitize_url(url: str) -> str:
-    """
-    Garantia de URL válida antes de injectar no browser headless.
-    Auto-prefixo https:// se em falta. Lança ValueError para URLs inválidas.
-    """
-    value = (url or "").strip()
-    if not value:
-        raise ValueError("URL vazia")
-    if not re.match(r"^https?://", value, re.IGNORECASE):
-        value = f"https://{value}"
-    parsed = urlparse(value)
-    if not parsed.scheme or not parsed.netloc or "." not in (parsed.hostname or ""):
-        raise ValueError(f"URL inválida após sanitização: {value!r}")
-    return value
+    """Validate public scan targets and reject SSRF/private-network destinations."""
+    try:
+        return validate_public_url(url)
+    except UnsafeURLError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 async def _browser_scan_async(url: str, timeout_ms: int = 60_000) -> BrowserScanResult:
@@ -451,6 +444,33 @@ async def _browser_scan_async(url: str, timeout_ms: int = 60_000) -> BrowserScan
         await context.add_init_script(_INTERCEPT_SCRIPT)
 
         page = await context.new_page()
+
+        # ── SSRF guard for every browser request ──────────────────────────────
+        # A malicious public page can redirect or load subresources from private
+        # networks. Validate each hostname once per scan and abort unsafe routes.
+        _host_safety_cache: Dict[str, bool] = {}
+
+        async def _guard_route(route):
+            req_url = route.request.url
+            if req_url.startswith(("http://", "https://")):
+                host = (urlparse(req_url).hostname or "").lower()
+                safe = _host_safety_cache.get(host)
+                if safe is None:
+                    try:
+                        await asyncio.to_thread(validate_public_url, req_url)
+                        safe = True
+                    except Exception as exc:
+                        safe = False
+                        result.warnings.append(f"Blocked unsafe browser request to {host}: {exc}")
+                    _host_safety_cache[host] = safe
+
+                if not safe:
+                    await route.abort("blockedbyclient")
+                    return
+
+            await route.continue_()
+
+        await page.route("**/*", _guard_route)
 
         # ── Interceptação de rede ─────────────────────────────────────────────
         def _on_request(request):
@@ -708,26 +728,51 @@ def browser_scan(url: str, timeout_ms: int = 60_000, deep_scan: bool = False) ->
 
 
 def _static_fallback(url: str, error: Optional[str] = None) -> BrowserScanResult:
-    """Fallback estático com múltiplos User-Agents para sites que bloqueiam o browser headless."""
+    """Static HTTP fallback with SSRF-safe redirect handling."""
     import requests
 
     last_err = error
+    try:
+        safe_start_url = validate_public_url(url)
+    except Exception as exc:
+        return BrowserScanResult(
+            url=url, html="", scan_method="static_fallback",
+            fallback_used=True, error=str(exc),
+            scan_status="failed", failure_reason="unsafe_url",
+            static_fallback_attempted=True,
+        )
+
     for ua in _USER_AGENTS:
         try:
-            resp = requests.get(
-                url,
-                headers={
-                    "User-Agent": ua,
-                    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Cache-Control": "no-cache",
-                    "Pragma": "no-cache",
-                },
-                timeout=25,
-                allow_redirects=True,
-            )
-            resp.encoding = resp.apparent_encoding or "utf-8"
+            current_url = safe_start_url
+            resp = None
 
+            for _redirect_count in range(6):
+                resp = requests.get(
+                    current_url,
+                    headers={
+                        "User-Agent": ua,
+                        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Cache-Control": "no-cache",
+                        "Pragma": "no-cache",
+                    },
+                    timeout=25,
+                    allow_redirects=False,
+                )
+
+                if 300 <= resp.status_code < 400:
+                    location = resp.headers.get("Location")
+                    current_url = validate_redirect_target(current_url, location or "")
+                    continue
+                break
+            else:
+                raise UnsafeURLError("Too many redirects")
+
+            if resp is None:
+                raise RuntimeError("No HTTP response received")
+
+            resp.encoding = resp.apparent_encoding or "utf-8"
             html = resp.text if resp.status_code == 200 else ""
 
             script_urls = re.findall(r'<script[^>]+src=["\'"]([^"\'"\>]+)["\']', html, re.IGNORECASE)
@@ -735,20 +780,20 @@ def _static_fallback(url: str, error: Optional[str] = None) -> BrowserScanResult
             page_title = title_match.group(1).strip() if title_match else ""
 
             result = BrowserScanResult(
-                url=url,
+                url=safe_start_url,
                 html=html,
                 scan_method="static_fallback",
                 fallback_used=True,
                 error=error,
                 page_title=page_title,
                 all_script_urls=script_urls[:100],
-                final_url=resp.url,
+                final_url=current_url,
                 static_fallback_attempted=True,
                 partial_scan=True,
             )
             result.warnings = [
                 "Fallback estático — comportamento JS em tempo de execução não verificado",
-                "Estado de cookies, pushes de dataLayer e interacções de consentimento não capturados",
+                "Estado de cookies, pushes de dataLayer e interações de consentimento não capturados",
             ]
             return result
 
@@ -756,7 +801,7 @@ def _static_fallback(url: str, error: Optional[str] = None) -> BrowserScanResult
             last_err = str(exc)
 
     return BrowserScanResult(
-        url=url, html="", scan_method="static_fallback",
+        url=safe_start_url, html="", scan_method="static_fallback",
         fallback_used=True, error=last_err,
         scan_status="failed",
         failure_reason=last_err,
