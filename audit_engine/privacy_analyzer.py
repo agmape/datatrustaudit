@@ -1,136 +1,115 @@
-"""
-audit_engine.privacy_analyzer — Jurisdiction-aware privacy compliance analysis.
+"""Jurisdiction-aware technical privacy risk analysis.
 
-Applies the correct regulatory framework based on detected site jurisdiction.
-Does NOT call everything LGPD. Uses jurisdiction-specific wording.
-
-IMPORTANT: All wording is indicative only — not legal advice.
+This module intentionally separates observable technical evidence from legal
+conclusions. It never estimates monetary penalties and never treats an
+external scan as proof of legal non-compliance.
 """
 import re
 from typing import List
-from .models import (
-    PrivacyAnalysisResult, PrivacyViolation, TagFinding,
-    CONFIDENCE_HIGH, CONFIDENCE_MEDIUM,
-)
 from urllib.parse import urlparse
 
+from .models import (
+    PrivacyAnalysisResult,
+    PrivacyViolation,
+    TagFinding,
+    CONFIDENCE_HIGH,
+    CONFIDENCE_MEDIUM,
+)
 
-# ─────────────────────────────────────────────
-# Jurisdiction detection
-# ─────────────────────────────────────────────
 
 def detect_jurisdiction(html: str, url: str) -> dict:
-    """
-    Detect the most likely applicable privacy jurisdiction.
-    Returns a dict with: region, law, law_full, consent_required, require_consent_first
+    """Infer a likely privacy framework from public signals.
+
+    This is a routing heuristic, not a determination that a law applies.
     """
     parsed = urlparse(url)
-    tld = parsed.netloc.split(".")[-1].lower()
-    domain = parsed.netloc.lower()
+    domain = (parsed.hostname or "").lower()
+    tld = domain.split(".")[-1] if domain else ""
 
-    # TLD-based (high confidence)
-    if tld in ("br",) or "com.br" in domain or ".br" in domain:
+    if tld == "br":
         return {
             "region": "Brazil",
             "law": "LGPD",
             "law_full": "Lei Geral de Proteção de Dados (LGPD) — Brazil",
-            "consent_required": True,
-            "require_consent_first": True,
+            "confidence": "medium",
+            "require_consent_first": None,
         }
-    if tld in ("uk", "co") and ".uk" in domain:
+
+    if domain.endswith(".uk"):
         return {
             "region": "United Kingdom",
             "law": "UK GDPR",
             "law_full": "UK General Data Protection Regulation (UK GDPR)",
-            "consent_required": True,
+            "confidence": "medium",
             "require_consent_first": True,
         }
-    if tld in ("eu", "de", "fr", "it", "es", "pt", "nl", "be", "at", "pl", "se", "fi", "dk", "ie", "ch", "no"):
+
+    if tld in {"eu", "de", "fr", "it", "es", "pt", "nl", "be", "at", "pl", "se", "fi", "dk", "ie", "ch", "no"}:
         return {
             "region": "EU / EEA",
             "law": "GDPR",
             "law_full": "General Data Protection Regulation (GDPR) — EU/EEA",
-            "consent_required": True,
+            "confidence": "medium",
             "require_consent_first": True,
         }
-    if tld in ("us", "gov", "edu") or ".ca.gov" in domain:
+
+    # A generic .us/.gov/.edu domain is not evidence that CCPA/CPRA applies.
+    if domain.endswith(".ca.gov"):
         return {
-            "region": "United States / California",
+            "region": "California, United States",
             "law": "CCPA/CPRA",
-            "law_full": "California Consumer Privacy Act / CPRA (US State Privacy Laws)",
-            "consent_required": False,    # CCPA is opt-out by default
+            "law_full": "California Consumer Privacy Act / CPRA",
+            "confidence": "medium",
             "require_consent_first": False,
         }
 
-    # Content-based heuristics (medium confidence)
-    pt_signals = [r"\bLGPD\b", r"política de privacidade", r"aceitar cookies.*pt", r"consentimento\b"]
-    gdpr_signals = [r"\bGDPR\b", r"\bRGPD\b", r"Datenschutz", r"Cookie-Einstellungen"]
+    pt_signals = [
+        r"\bLGPD\b",
+        r"pol[ií]tica de privacidade",
+        r"lei\s+13\.709",
+    ]
+    gdpr_signals = [
+        r"\bGDPR\b",
+        r"\bRGPD\b",
+        r"Datenschutz",
+        r"Cookie-Einstellungen",
+    ]
 
-    for pat in pt_signals:
-        if re.search(pat, html, re.IGNORECASE):
-            return {
-                "region": "Brazil",
-                "law": "LGPD",
-                "law_full": "Lei Geral de Proteção de Dados (LGPD) — Brazil",
-                "consent_required": True,
-                "require_consent_first": True,
-            }
-    for pat in gdpr_signals:
-        if re.search(pat, html, re.IGNORECASE):
-            return {
-                "region": "EU / EEA",
-                "law": "GDPR",
-                "law_full": "General Data Protection Regulation (GDPR) — EU/EEA",
-                "consent_required": True,
-                "require_consent_first": True,
-            }
+    if any(re.search(pat, html or "", re.IGNORECASE) for pat in pt_signals):
+        return {
+            "region": "Brazil",
+            "law": "LGPD",
+            "law_full": "Lei Geral de Proteção de Dados (LGPD) — Brazil",
+            "confidence": "low",
+            "require_consent_first": None,
+        }
 
-    # Default: general risk assessment
+    if any(re.search(pat, html or "", re.IGNORECASE) for pat in gdpr_signals):
+        return {
+            "region": "EU / EEA",
+            "law": "GDPR",
+            "law_full": "General Data Protection Regulation (GDPR) — EU/EEA",
+            "confidence": "low",
+            "require_consent_first": True,
+        }
+
     return {
         "region": "Global / Unknown",
         "law": "General Privacy",
         "law_full": "General Privacy Risk Assessment (jurisdiction not determinable)",
-        "consent_required": None,
+        "confidence": "low",
         "require_consent_first": None,
     }
 
 
-# ─────────────────────────────────────────────
-# Risk table (jurisdiction-agnostic)
-# ─────────────────────────────────────────────
-
-_RISK_TABLE = {
-    "no_cmp": {
-        "article": "Consent Requirement",
-        "description": "Tracking without a consent management mechanism",
-        "min_fine": 5_000,
-        "max_fine": 50_000,
-    },
-    "tracking_before_consent": {
-        "article": "Consent-First Behaviour",
-        "description": "Observable tracking script loading before any consent signal",
-        "min_fine": 10_000,
-        "max_fine": 50_000,
-    },
-    "critical_tracker": {
-        "article": "High-Risk Tracking",
-        "description": "Use of intrusive tracking tools (session recording, fingerprinting)",
-        "min_fine": 15_000,
-        "max_fine": 50_000,
-    },
-    "advertising_tracker": {
-        "article": "Third-Party Data Sharing",
-        "description": "Advertising/remarketing scripts without confirmed consent",
-        "min_fine": 10_000,
-        "max_fine": 40_000,
-    },
-    "obsolete_ua": {
-        "article": "Data Security Obligation",
-        "description": "Use of discontinued tracking technology (Universal Analytics)",
-        "min_fine": 5_000,
-        "max_fine": 20_000,
-    },
-}
+def _legal_context(law: str) -> str:
+    if law == "LGPD":
+        return "LGPD Arts. 6º e 7º — contexto de princípios/base legal; exige verificação jurídica"
+    if law in {"GDPR", "UK GDPR"}:
+        return f"{law} — lawful basis/cookie consent context; applicability requires legal review"
+    if law == "CCPA/CPRA":
+        return "CCPA/CPRA — consumer privacy context; applicability requires legal review"
+    return "Privacy-law applicability requires manual legal verification"
 
 
 def analyze_privacy(
@@ -139,123 +118,120 @@ def analyze_privacy(
     tags_before_consent: List[TagFinding],
     jurisdiction: dict,
 ) -> PrivacyAnalysisResult:
+    """Build technical privacy risk indicators from observable evidence.
 
-    law  = jurisdiction["law"]
-    region = jurisdiction["region"]
-    law_full = jurisdiction["law_full"]
-    require_consent_first = jurisdiction.get("require_consent_first", True)
+    The API field named violations is retained for backwards compatibility,
+    but each item is a technical risk indicator, not a legal conclusion.
+    """
+    law = jurisdiction.get("law", "General Privacy")
+    region = jurisdiction.get("region", "Global / Unknown")
+    law_full = jurisdiction.get("law_full", "General Privacy")
+    require_consent_first = jurisdiction.get("require_consent_first")
 
-    violations: List[PrivacyViolation] = []
-    total_min = 0
-    total_max = 0
+    findings: List[PrivacyViolation] = []
     consent_risks: List[str] = []
     disclosure_gaps: List[str] = []
+    deductions = []
 
-    has_ua = any(t.id == "ua" for t in tags)
-
-    # ── No CMP ────────────────────────────────────────────────────────────────
-    if not has_consent_tool:
-        r = _RISK_TABLE["no_cmp"]
-        if any(t.type in ("analytics", "advertising", "heatmap") for t in tags):
-            violations.append(PrivacyViolation(
-                tag="Site",
-                violation=f"No consent management platform detected. "
-                          f"Under {law}, tracking technologies require explicit user consent before activation.",
-                article=r["article"],
-                description=r["description"],
-                severity="critical",
-                confidence=CONFIDENCE_HIGH,
-            ))
-            disclosure_gaps.append("No CMP found")
-            total_min += r["min_fine"]
-            total_max += r["max_fine"]
-
-    # ── Tags before consent ────────────────────────────────────────────────────
-    for tag in tags_before_consent:
-        if tag.type == "consent":
-            continue
-        if tag.type in ("analytics", "advertising", "heatmap", "marketing") and require_consent_first:
-            risk_key = "critical_tracker" if tag.privacy_risk == "critical" else (
-                "advertising_tracker" if tag.type == "advertising" else "tracking_before_consent"
-            )
-            r = _RISK_TABLE.get(risk_key, _RISK_TABLE["tracking_before_consent"])
-            violations.append(PrivacyViolation(
-                tag=tag.name,
-                violation=f"Observed loading before consent signal (line {tag.line_number or 'unknown'}). "
-                          f"Observed technical behaviour — potential {law} non-compliance pattern.",
-                article=r["article"],
-                description=r["description"],
-                severity=tag.privacy_risk,
-                confidence=CONFIDENCE_MEDIUM,
-                data_collected=tag.data_collected,
-                tag_id=tag.tag_id,
-            ))
-            consent_risks.append(f"{tag.name} firing before consent")
-            total_min += r["min_fine"]
-            total_max += r["max_fine"]
-
-    # ── Universal Analytics ────────────────────────────────────────────────────
-    if has_ua:
-        r = _RISK_TABLE["obsolete_ua"]
-        violations.append(PrivacyViolation(
-            tag="Universal Analytics",
-            violation="Use of deprecated Universal Analytics (discontinued July 2023). "
-                      "Continued use represents a data security and regulatory risk.",
-            article=r["article"],
-            description=r["description"],
-            severity="critical",
-            confidence=CONFIDENCE_HIGH,
-        ))
-        total_min += r["min_fine"]
-        total_max += r["max_fine"]
-
-    # ── Critical trackers without consent ─────────────────────────────────────
-    critical_no_consent = [
+    relevant_trackers = [
         t for t in tags
-        if t.privacy_risk == "critical" and t.type != "consent" and not has_consent_tool
-        and t not in tags_before_consent
+        if t.type in {"analytics", "advertising", "heatmap", "marketing", "ab_testing"}
     ]
-    for tag in critical_no_consent[:3]:   # cap at 3 to avoid spam
-        r = _RISK_TABLE["critical_tracker"]
-        violations.append(PrivacyViolation(
-            tag=tag.name,
-            violation=f"High-risk tracker detected ({tag.type}) with no consent mechanism. "
-                      f"Indicative privacy exposure signal under {law}.",
-            article=r["article"],
-            description=r["description"],
-            severity="critical",
+
+    if relevant_trackers and not has_consent_tool:
+        findings.append(PrivacyViolation(
+            tag="Site",
+            violation=(
+                "Technical risk indicator: tracking technologies were observed, "
+                "but no known CMP was detected during this scan."
+            ),
+            article=_legal_context(law),
+            description=(
+                "Absence of a detected CMP is not proof of non-compliance. "
+                "The organization may rely on another lawful basis or a consent "
+                "mechanism that was not observable to this scanner."
+            ),
+            severity="medium",
             confidence=CONFIDENCE_MEDIUM,
-            data_collected=tag.data_collected,
         ))
-        total_min += r["min_fine"]
-        total_max += r["max_fine"]
+        disclosure_gaps.append("No known CMP observed; legal basis/consent mechanism requires manual verification")
+        deductions.append({
+            "reason": "Trackers observed with no known CMP visible to the scan",
+            "points": -10,
+            "confidence": "medium",
+            "evidence_type": "technical_observation",
+        })
 
-    # ── Score ──────────────────────────────────────────────────────────────────
-    compliance_score = max(0, 100 - len(violations) * 12)
+    seen_names = set()
+    for tag in tags_before_consent:
+        if tag.type not in {"analytics", "advertising", "heatmap", "marketing", "ab_testing"}:
+            continue
+        if tag.name in seen_names:
+            continue
+        seen_names.add(tag.name)
 
-    # ── Risk exposure summary ──────────────────────────────────────────────────
-    if violations:
-        exposure = (
-            f"Indicative risk exposure (reference only, not legal advice): "
-            f"USD ${total_min // 5:,} – USD ${total_max // 5:,}"
+        evidence_type = "network" if tag.detection_method == "network_request" else "html_order_heuristic"
+        confidence = CONFIDENCE_HIGH if evidence_type == "network" else CONFIDENCE_MEDIUM
+        legal_note = (
+            "For this inferred jurisdiction, non-essential tracking commonly requires "
+            "consent before activation."
+            if require_consent_first is True
+            else
+            "The applicable legal basis cannot be determined from an external scan."
         )
-    else:
-        exposure = "No significant risk indicators detected on this page"
+
+        findings.append(PrivacyViolation(
+            tag=tag.name,
+            violation=(
+                "Technical risk indicator: the tracker appears to activate before "
+                "an observable consent signal."
+            ),
+            article=_legal_context(law),
+            description=f"{legal_note} Evidence type: {evidence_type}.",
+            severity="high" if evidence_type == "network" else "medium",
+            confidence=confidence,
+            data_collected=tag.data_collected,
+            tag_id=tag.tag_id,
+        ))
+        consent_risks.append(f"{tag.name}: observed/indicated before consent signal")
+        deductions.append({
+            "reason": f"{tag.name} appears before an observable consent signal",
+            "points": -12 if evidence_type == "network" else -7,
+            "confidence": confidence,
+            "evidence_type": evidence_type,
+        })
+
+    # Deprecated UA is a technical maintenance/data-quality issue, not by itself
+    # proof of a privacy-law violation.
+    if any(t.id == "ua" for t in tags):
+        disclosure_gaps.append(
+            "Universal Analytics legacy code detected; this is a technical maintenance risk, "
+            "not an automatic legal violation."
+        )
+
+    total_deduction = min(70, sum(abs(int(d["points"])) for d in deductions))
+    technical_score = max(0, 100 - total_deduction)
 
     return PrivacyAnalysisResult(
         jurisdiction=region,
         law=law,
         law_full=law_full,
-        violations=violations,
-        total_violations=len(violations),
+        violations=findings,
+        total_violations=len(findings),
         has_consent_tool=has_consent_tool,
-        has_universal_analytics=has_ua,
-        consent_risks=list(set(consent_risks)),
-        disclosure_gaps=list(set(disclosure_gaps)),
-        estimated_risk_exposure=exposure,
-        compliance_score=compliance_score,
-        confidence_level=(
-            "Indicative assessment based on publicly observable page behaviour. "
-            "Does not constitute legal advice. Backend-only and SPA events are not visible to this scan."
+        has_universal_analytics=any(t.id == "ua" for t in tags),
+        consent_risks=list(dict.fromkeys(consent_risks)),
+        disclosure_gaps=list(dict.fromkeys(disclosure_gaps)),
+        estimated_risk_exposure=(
+            "Monetary penalties cannot be estimated from an external technical scan. "
+            "Any sanction depends on facts not observable here, including legal basis, "
+            "processing context, remediation, regulator assessment and, where relevant, turnover."
         ),
+        compliance_score=technical_score,
+        confidence_level=(
+            "Technical privacy-risk assessment based on publicly observable evidence only. "
+            "This score is a prioritization heuristic, not a legal compliance certification."
+        ),
+        score_basis="Technical privacy-risk heuristic; not a legal compliance percentage.",
+        score_deductions=deductions,
     )
