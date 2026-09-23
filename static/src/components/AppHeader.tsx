@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -12,7 +11,6 @@ import {
     HelpCircle,
     ExternalLink,
 } from 'lucide-react';
-import PlanBadge from './PlanBadge';
 import LocaleSelector from './LocaleSelector';
 import ThemeSwitcher from './ThemeSwitcher';
 import logoIcon from '@/assets/logo/datatrust-logo-icon.png';
@@ -42,12 +40,6 @@ const AppHeader = () => {
 
                     {/* Right Actions */}
                     <div className="flex items-center gap-2 md:gap-3">
-                        {/* Desktop Nav */}
-                        <nav className="hidden lg:flex items-center gap-5 mr-2">
-                            <Link to="/pricing" className="text-sm font-medium dt-text-muted hover:text-blue-400 transition-colors">
-                                {t('nav.pricing')}
-                            </Link>
-                        </nav>
 
                         {/* Theme Switcher */}
                         <ThemeSwitcher />
@@ -56,9 +48,6 @@ const AppHeader = () => {
                         <LocaleSelector compact />
 
                         <div className="h-4 w-[1px] bg-white/10 mx-0.5 hidden sm:block" />
-
-                        {/* Plan Badge */}
-                        <PlanBadge />
 
                         {/* Help */}
                         <DropdownMenu>
