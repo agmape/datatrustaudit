@@ -6,12 +6,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use the same SQLite database as payments module for unified storage
+# Database storage.
+# Vercel's deployed function bundle is read-only. When DATABASE_URL is not yet
+# configured, use /tmp as an ephemeral emergency fallback so the API can boot.
+# Production persistence should always use a PostgreSQL DATABASE_URL.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_FILE = os.path.join(BASE_DIR, "db", "gtmaudit.db")
-os.makedirs(os.path.join(BASE_DIR, "db"), exist_ok=True)
+IS_VERCEL = bool(os.getenv("VERCEL"))
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_FILE}")
+if IS_VERCEL:
+    DB_FILE = "/tmp/gtmaudit.db"
+else:
+    DB_DIR = os.path.join(BASE_DIR, "db")
+    os.makedirs(DB_DIR, exist_ok=True)
+    DB_FILE = os.path.join(DB_DIR, "gtmaudit.db")
+
+DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{DB_FILE}"
 
 # Create SQLAlchemy engine — SQLite needs check_same_thread=False
 connect_args = {}
