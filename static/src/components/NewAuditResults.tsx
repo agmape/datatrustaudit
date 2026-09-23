@@ -115,28 +115,9 @@ interface NewAuditResult {
     pageReports?: any[];
 }
 
-/** Locked export button — shows lock icon and opens upgrade modal on click */
-const LockedExportButton = ({ label, icon: Icon, feature, onUpgrade }: {
-    label: string;
-    icon: React.ElementType;
-    feature: string;
-    onUpgrade: (f: string) => void;
-}) => (
-    <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onUpgrade(feature)}
-        className="flex items-center gap-2 opacity-50 cursor-not-allowed border border-dashed border-gray-300 dark:border-gray-600"
-        title={`Bloqueado — faça upgrade para acessar ${label}`}
-    >
-        <Lock className="w-3 h-3" />
-        <Icon className="w-4 h-4" />
-        {label}
-    </Button>
-);
-
 const NewAuditResults = ({ result, scanId }: { result: NewAuditResult, scanId?: string }) => {
-    const { t } = useI18n();    const limits = {
+    const { t } = useI18n();
+    const limits = {
         showViolationDetails: true,
         showLineNumbers: true,
         visibilityPercentage: 100,
@@ -299,43 +280,24 @@ ${violationsText}
                         </div>
                     </div>
 
-                    {/* ─── Export buttons (plan-gated) ─── */}
+                    {/* ─── Export buttons — all available ─── */}
                     <div className="flex gap-2 mt-6 flex-wrap">
-                        {/* Copy: always available */}
                         <Button variant="secondary" size="sm" onClick={handleCopyReport} className="flex items-center gap-2">
                             <Copy className="w-4 h-4" />
                             {t('buttons.copy')}
                         </Button>
-
-                        {/* JSON: Pro+ */}
-                        {isFeatureAvailable('jsonExport') ? (
-                            <Button variant="secondary" size="sm" onClick={handleExportJSON} className="flex items-center gap-2">
-                                <Download className="w-4 h-4" />
-                                {t('buttons.export_json')}
-                            </Button>
-                        ) : (
-                            <LockedExportButton label={t('buttons.export_json')} icon={Download} feature="jsonExport" onUpgrade={handleUpgradeLock} />
-                        )}
-
-                        {/* PDF: Pro+ */}
-                        {isFeatureAvailable('pdfExport') ? (
-                            <Button variant="secondary" size="sm" onClick={handleExportPDF} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-800">
-                                <FileText className="w-4 h-4" />
-                                {t('buttons.export_pdf')}
-                            </Button>
-                        ) : (
-                            <LockedExportButton label={t('buttons.export_pdf')} icon={FileText} feature="pdfExport" onUpgrade={handleUpgradeLock} />
-                        )}
-
-                        {/* Excel: Premium only */}
-                        {isFeatureAvailable('excelExport') ? (
-                            <Button variant="secondary" size="sm" onClick={handleExportExcel} className="flex items-center gap-2 bg-green-100 hover:bg-green-200 text-green-800">
-                                <FileSpreadsheet className="w-4 h-4" />
-                                {t('buttons.export_excel')}
-                            </Button>
-                        ) : (
-                            <LockedExportButton label={t('buttons.export_excel')} icon={FileSpreadsheet} feature="excelExport" onUpgrade={handleUpgradeLock} />
-                        )}
+                        <Button variant="secondary" size="sm" onClick={handleExportJSON} className="flex items-center gap-2">
+                            <Download className="w-4 h-4" />
+                            {t('buttons.export_json')}
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={handleExportPDF} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-800">
+                            <FileText className="w-4 h-4" />
+                            {t('buttons.export_pdf')}
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={handleExportExcel} className="flex items-center gap-2 bg-green-100 hover:bg-green-200 text-green-800">
+                            <FileSpreadsheet className="w-4 h-4" />
+                            {t('buttons.export_excel')}
+                        </Button>
                     </div>
                 </CardContent>
             </Card>
@@ -374,7 +336,7 @@ ${violationsText}
                         })}
                     </div>
 
-                    {/* Duplicates — Pro+ — Collapsible container + simple list */}
+                    {/* Duplicates — disponível — Collapsible container + simple list */}
                     {result.duplicates && result.duplicates.length > 0 && (
                         <FeatureGate feature="showViolationDetails" featureName="Tags duplicadas">
                             <div className="mt-4 rounded-xl border border-orange-500/30 bg-slate-900/90 shadow-md overflow-hidden">
@@ -474,13 +436,11 @@ ${violationsText}
                         <TabsTrigger value="deep" className="flex items-center gap-1.5 text-xs rounded-lg whitespace-nowrap shrink-0">
                             <Sparkles className="w-3.5 h-3.5" />
                             Análise IA
-                            {!isFeatureAvailable('deepAnalysis') && <Lock className="w-3 h-3 opacity-50" />}
                         </TabsTrigger>
 
                         <TabsTrigger value="timeline" className="flex items-center gap-1.5 text-xs rounded-lg whitespace-nowrap shrink-0">
                             <Clock className="w-3.5 h-3.5" />
                             {t('audit_nav.timeline')}
-                            {!isFeatureAvailable('showLineNumbers') && <Lock className="w-3 h-3 opacity-50" />}
                         </TabsTrigger>
 
                         <TabsTrigger value="lgpd" className="flex items-center gap-1.5 text-xs rounded-lg whitespace-nowrap shrink-0">
@@ -554,9 +514,9 @@ ${violationsText}
                     <GTMQualityPanel data={result.gtmQuality || null} />
                 </TabsContent>
 
-                {/* AI Deep Analysis — Premium only */}
+                {/* AI Deep Analysis — disponível */}
                 <TabsContent value="deep" className="mt-6">
-                    <FeatureGate feature="deepAnalysis" featureName="Análise PRO">
+                    <FeatureGate feature="deepAnalysis" featureName="Análise completa">
                         <DeepAnalysisPanel
                             url={result.url}
                             detectedTags={result.tags}
@@ -565,7 +525,7 @@ ${violationsText}
                     </FeatureGate>
                 </TabsContent>
 
-                {/* Timeline — Premium only */}
+                {/* Timeline — disponível */}
                 <TabsContent value="timeline" className="mt-6">
                     <FeatureGate feature="showLineNumbers" featureName="Script Timeline com linha de código">
                         <ScriptTimeline
@@ -614,7 +574,7 @@ ${violationsText}
                 </TabsContent>
 
 
-                {/* Deep Scan multi-page — Premium */}
+                {/* Deep Scan multi-page */}
                 {result.pageReports && (
                     <TabsContent value="deep-scan" className="mt-6">
                         <FeatureGate feature="deepAnalysis" featureName="Deep Scan multi-página">
@@ -664,7 +624,7 @@ ${violationsText}
                                                 {t('tracker.line_in_code')}
                                                 {!isFeatureAvailable('showLineNumbers') && <Lock className="w-3 h-3 text-amber-500" />}
                                             </th>
-                                            {/* Tag ID / pattern — Pro+ */}
+                                            {/* Tag ID / pattern — disponível */}
                                             {isFeatureAvailable('showViolationDetails') && (
                                                 <th className="text-left p-3 font-semibold">{t('tracker.id_pattern')}</th>
                                             )}
@@ -706,7 +666,7 @@ ${violationsText}
                                                         </Badge>
                                                     )}
                                                 </td>
-                                                {/* ID/Pattern — Pro+ */}
+                                                {/* ID/Pattern — disponível */}
                                                 {isFeatureAvailable('showViolationDetails') && (
                                                     <td className="p-3">
                                                         <code className="text-xs bg-gray-100 px-2 py-0.5 rounded">
