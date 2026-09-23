@@ -14,7 +14,6 @@ import AdminPlanTesting from "@/components/AdminPlanTesting";
 
 // Pages
 import Index from "./pages/Index";
-import AuthPage from "./pages/Auth";
 import PricingPage from "./pages/Pricing";
 import CheckoutPage from "./pages/Checkout";
 import PaymentSuccess from "./pages/PaymentSuccess";
@@ -22,7 +21,6 @@ import PaymentPending from "./pages/PaymentPending";
 import PaymentFailed from "./pages/PaymentFailed";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
-import AuthCallback from "./pages/AuthCallback";
 
 const queryClient = new QueryClient();
 
@@ -43,10 +41,6 @@ const App = () => (
                     <Routes>
                       {/* Main app */}
                       <Route path="/" element={<Index />} />
-
-                      {/* Auth */}
-                      <Route path="/auth" element={<AuthPage />} />
-                      <Route path="/auth/callback" element={<AuthCallback />} />
 
                       {/* Pricing & Checkout */}
                       <Route path="/pricing" element={<PricingPage />} />
