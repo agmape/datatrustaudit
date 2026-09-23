@@ -174,9 +174,9 @@ export default function OutreachEnginePanel({
     onExportPDF,
     onExportExcel,
     onExportJSON,
-    canExportPDF = false,
-    canExportExcel = false,
-    canExportJSON = false,
+    canExportPDF = true,
+    canExportExcel = true,
+    canExportJSON = true,
 }: OutreachEnginePanelProps) {
     const [pitchTab, setPitchTab] = useState<'linkedin' | 'email'>('linkedin');
     const [dpoName, setDpoName] = useState('');
@@ -317,11 +317,10 @@ https://datatrustaudit.com`;
 
     const charCount = linkedinPitch.length;
 
-    // ── Export handler wrapper ─────────────────────────────────
     const handleLockedExport = useCallback((name: string) => {
         toast({
-            title: 'Recurso Pro+',
-            description: `Faça upgrade para acessar a exportação de ${name}.`,
+            title: 'Exportação indisponível',
+            description: `Não foi possível iniciar a exportação de ${name}.`,
             variant: 'destructive',
         });
     }, []);
@@ -603,7 +602,7 @@ function ExportButton({ icon: Icon, label, subtitle, color, locked, onClick }: {
                     ? 'opacity-50 cursor-not-allowed border-dashed border-slate-600 bg-slate-800/30'
                     : `${c.bg} ${c.border} border hover:brightness-125 hover:shadow-md`
                 }`}
-            title={locked ? `Faça upgrade para acessar ${label}` : label}
+            title={locked ? `${label} indisponível` : label}
         >
             <div className={`${c.text} ${locked ? 'opacity-40' : ''}`}>
                 {locked ? <Lock className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
