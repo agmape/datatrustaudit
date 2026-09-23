@@ -61,8 +61,8 @@ except Exception as exc:
     print(f"[ERROR] Database import disabled: {IMPORT_ERRORS['database']}")
 
 # API routers are isolated so one optional integration cannot crash the app.
-auth = payments = scans = audit = None
-for _name in ("auth", "payments", "scans", "audit"):
+auth = payments = scans = audit = exports = None
+for _name in ("auth", "payments", "scans", "audit", "exports"):
     try:
         _module = __import__(f"api.{_name}", fromlist=[_name])
         globals()[_name] = _module
@@ -191,7 +191,7 @@ async def health_check():
 
 
 # Register only routers that imported successfully.
-for _router_module in (auth, payments, scans, audit):
+for _router_module in (auth, payments, scans, audit, exports):
     if _router_module is not None:
         app.include_router(_router_module.router)
 
