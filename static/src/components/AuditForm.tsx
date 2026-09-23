@@ -26,8 +26,6 @@ import FileUploadSection from './FileUploadSection';
 import SiteNavigationAnalysis from './SiteNavigationAnalysis';
 import OmnibugRealTimeDisplay from './OmnibugRealTimeDisplay';
 import { useI18n } from '@/context/I18nContext';
-import { usePlan } from '@/context/PlanContext';
-import { Lock } from 'lucide-react';
 
 interface AuditFormProps {
   url: string;
