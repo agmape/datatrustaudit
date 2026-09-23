@@ -108,7 +108,7 @@ def _issue_from_recommendation(rec: Dict[str, Any], locked: bool = False) -> Dic
         "impact": rec.get("impact") or "May affect analytics data quality, privacy compliance, or debugging reliability.",
         "howToFix": rec.get("fix") or rec.get("recommendation") or "Review the implementation in GTM, GA4, CMP, and site source.",
         "confidence": rec.get("confidence") or "medium",
-        "planRequirement": "premium" if locked else rec.get("planRequirement"),
+        "accessRequirement": null,
     }
 
 
@@ -135,7 +135,7 @@ def _build_debugging(scan: Any, audit: Dict[str, Any]) -> Dict[str, Any]:
         "spaBehaviorHints": [
             {
                 "status": "needs_manual_verification",
-                "message": "Single-page app route changes and post-login flows require manual verification or Premium deep scan.",
+                "message": "Single-page app route changes and authenticated flows may require manual verification or a deeper multi-page scan.",
             }
         ],
     }
@@ -189,7 +189,6 @@ def _normalize_audit_response(url: str, scan: Any, audit_result: Any) -> Dict[st
     # Cookie names must come from browser evidence, never from vendor assumptions.
     observed_cookies = sorted(list((getattr(scan, "cookies", {}) or {}).keys()))
 
-    limit_note = None
     visible_tags = tags
 
     response = {
