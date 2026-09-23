@@ -39,8 +39,6 @@ import RegulatoryExposurePanel from './RegulatoryExposurePanel';
 import OutreachEnginePanel from './OutreachEnginePanel';
 import ForensicEvidencePanel from './ForensicEvidencePanel';
 import { useI18n } from '@/context/I18nContext';
-import { usePlan } from '@/context/PlanContext';
-import { useAuth } from '@/context/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { downloadAuditPDF, downloadAuditExcel } from '@/lib/exportUtils';
 
@@ -138,14 +136,14 @@ const LockedExportButton = ({ label, icon: Icon, feature, onUpgrade }: {
 );
 
 const NewAuditResults = ({ result, scanId }: { result: NewAuditResult, scanId?: string }) => {
-    const { t } = useI18n();
-    const { limits, isFeatureAvailable, setShowUpgradeModal, setBlockedFeature } = usePlan();
-    const { token } = useAuth();
-
-    const handleUpgradeLock = (feature: string) => {
-        setBlockedFeature(feature);
-        setShowUpgradeModal(true);
+    const { t } = useI18n();    const limits = {
+        showViolationDetails: true,
+        showLineNumbers: true,
+        visibilityPercentage: 100,
     };
+    const isFeatureAvailable = (_feature: string) => true;
+    const handleUpgradeLock = (_feature: string) => {};
+
 
     // Accordion state for duplicates section
     const [dupSectionOpen, setDupSectionOpen] = useState(true);
@@ -165,14 +163,13 @@ const NewAuditResults = ({ result, scanId }: { result: NewAuditResult, scanId?: 
     };
 
     const handleCopyReport = () => {
-        // Free users get a summary-only copy (no technical-risk details)
-        const violationsText = limits.showViolationDetails
-            ? result.privacy.violations.map(v => `- ${v.tag}: ${v.violation} (${v.article})`).join('\n')
-            : `${result.privacy.total_violations} indicador(es) técnico(s) — faça upgrade para detalhes completos`;
+        const violationsText = result.privacy.violations
+            .map(v => `- ${v.tag}: ${v.violation} (${v.article})`)
+            .join('\n');
 
-        const tagsText = limits.showLineNumbers
-            ? result.tags.map(t => `- ${t.name} (${t.type}) — Linha ${t.lineNumber}`).join('\n')
-            : result.tags.map(t => `- ${t.name} (${t.type})`).join('\n');
+        const tagsText = result.tags
+            .map(t => `- ${t.name} (${t.type}) — Linha ${t.lineNumber || 'não disponível'}`)
+            .join('\n');
 
         const report = `
 DataTrust Audit Report
@@ -198,10 +195,7 @@ ${violationsText}
     };
 
     const handleExportJSON = () => {
-        // Strip sensitive data for lower plans
-        const exportData = limits.showViolationDetails
-            ? result
-            : { ...result, privacy: { ...result.privacy, violations: [] } };
+        const exportData = result;
 
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -235,10 +229,9 @@ ${violationsText}
         }
     };
 
-    // Slice tags list by plan visibility percentage
-    const visibleTagCount = Math.max(1, Math.ceil(result.tags.length * (limits.visibilityPercentage / 100)));
-    const visibleTags = result.tags.slice(0, visibleTagCount);
-    const hasMoreTags = visibleTagCount < result.tags.length;
+    const visibleTagCount = result.tags.length;
+    const visibleTags = result.tags;
+    const hasMoreTags = false;
 
     return (
         <div className="space-y-4">
