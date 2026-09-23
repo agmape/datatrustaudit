@@ -100,7 +100,7 @@ const OmnibugRealTimeDisplay = ({ url, onComplete }: OmnibugRealTimeDisplayProps
               </Button>
             </CardTitle>
             <CardDescription>
-              Captura dados reais do site usando a extensão Omnibug ou análise interna avançada
+              Executa a auditoria real do DataTrust e exibe somente evidências retornadas pelo backend.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -108,6 +108,12 @@ const OmnibugRealTimeDisplay = ({ url, onComplete }: OmnibugRealTimeDisplayProps
               <Globe className="h-4 w-4 mr-2" />
               Iniciar Captura Real de Dados
             </Button>
+            {analysisError && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{analysisError}</AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
         
@@ -186,7 +192,7 @@ const OmnibugRealTimeDisplay = ({ url, onComplete }: OmnibugRealTimeDisplayProps
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Crítico:</strong> Consentimento LGPD não conforme detectado. 
+            <strong>Atenção:</strong> O scanner encontrou sinais técnicos de consentimento/privacidade que precisam de revisão. 
             {results.consentMechanism.issues.length > 0 && ` Problemas: ${results.consentMechanism.issues.join(', ')}`}
           </AlertDescription>
         </Alert>
