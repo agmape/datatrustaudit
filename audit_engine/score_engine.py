@@ -179,4 +179,25 @@ def compute_scores(
         datalayer_quality=dl_quality,
         consent_integrity=consent_s,
         privacy_risk=priv_risk,
+        explanation={
+            "model": "weighted_technical_audit_score_v2",
+            "note": (
+                "Heuristic technical prioritization score; not a legal compliance percentage. "
+                "Each axis is computed from observable findings and fixed documented weights."
+            ),
+            "weights": {
+                "trackingQuality": 0.25,
+                "eventArchitecture": 0.20,
+                "datalayerQuality": 0.15,
+                "consentIntegrity": 0.30,
+                "inversePrivacyRisk": 0.10,
+            },
+            "axisValues": {
+                "trackingQuality": tracking,
+                "eventArchitecture": event_arch,
+                "datalayerQuality": dl_quality,
+                "consentIntegrity": consent_s,
+                "privacyRisk": priv_risk,
+            },
+        },
     )
