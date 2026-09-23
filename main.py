@@ -19,41 +19,71 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-# Google Gemini AI - Nova biblioteca
-from google import genai
-from google.genai import types
+# Optional runtime components must never prevent the ASGI app from booting.
+IMPORT_ERRORS = {}
 
-# Configure Gemini
+# Google Gemini AI
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
-
-# Cliente Gemini
+genai = None
+types = None
 gemini_client = None
-if GOOGLE_API_KEY:
-    gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
-    print(f"[OK] Gemini AI configured with model: {GEMINI_MODEL}")
-else:
-    print("[WARN] GOOGLE_API_KEY not configured. Chat will use rule-based responses.")
+try:
+    from google import genai as _genai
+    from google.genai import types as _genai_types
+    genai = _genai
+    types = _genai_types
+    if GOOGLE_API_KEY:
+        gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
+        print(f"[OK] Gemini AI configured with model: {GEMINI_MODEL}")
+    else:
+        print("[WARN] GOOGLE_API_KEY not configured. Chat will use rule-based responses.")
+except Exception as exc:
+    IMPORT_ERRORS["google_genai"] = f"{type(exc).__name__}: {exc}"
+    print(f"[WARN] Gemini disabled: {IMPORT_ERRORS['google_genai']}")
 
-# Database path
+# Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, "static", "dist")  # Vite builds to dist folder
-# Storage and DB
-from db.database import engine, get_db, sync_sqlite_schema
-from db.models import Base, User, Scan, Payment
-from api import auth, payments, scans, audit
-
+STATIC_DIR = os.path.join(BASE_DIR, "static", "dist")
 DB_PATH = os.path.join(BASE_DIR, "db", "tags.json")
+
+# Database is optional at boot. A DB/driver/config error must not take down
+# the frontend or health endpoint.
+engine = None
+get_db = None
+sync_sqlite_schema = None
+Base = User = Scan = Payment = None
+try:
+    from db.database import engine, get_db, sync_sqlite_schema
+    from db.models import Base, User, Scan, Payment
+except Exception as exc:
+    IMPORT_ERRORS["database"] = f"{type(exc).__name__}: {exc}"
+    print(f"[ERROR] Database import disabled: {IMPORT_ERRORS['database']}")
+
+# API routers are isolated so one optional integration cannot crash the app.
+auth = payments = scans = audit = None
+for _name in ("auth", "payments", "scans", "audit"):
+    try:
+        _module = __import__(f"api.{_name}", fromlist=[_name])
+        globals()[_name] = _module
+    except Exception as exc:
+        IMPORT_ERRORS[f"api.{_name}"] = f"{type(exc).__name__}: {exc}"
+        print(f"[ERROR] Router {_name} disabled: {IMPORT_ERRORS[f'api.{_name}']}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print(" DataTrust Audit API starting...")
     try:
-        Base.metadata.create_all(bind=engine)
-        sync_sqlite_schema()
-        print(" Database tables created via SQLAlchemy")
+        if Base is not None and engine is not None:
+            Base.metadata.create_all(bind=engine)
+            if callable(sync_sqlite_schema):
+                sync_sqlite_schema()
+            print(" Database tables created via SQLAlchemy")
+        else:
+            print("[WARN] Database unavailable at startup; API will run in degraded mode")
     except Exception as e:
+        IMPORT_ERRORS["database_startup"] = f"{type(e).__name__}: {e}"
         print(f" Could not sync DB on startup: {e}")
         
     yield
@@ -138,8 +168,11 @@ async def health_check():
         "supabase_jwt_secret": bool(os.getenv("SUPABASE_JWT_SECRET", "")),
         "admin_email": os.getenv("ADMIN_TEST_EMAIL", "not set"),
         "environment": os.getenv("ENVIRONMENT", "not set"),
+        "import_errors": IMPORT_ERRORS,
     }
     try:
+        if engine is None:
+            raise RuntimeError(IMPORT_ERRORS.get("database", "database unavailable"))
         from db.database import SessionLocal
         from sqlalchemy import text as sa_text
         db = SessionLocal()
@@ -147,16 +180,15 @@ async def health_check():
         db.close()
         checks["database"] = "ok"
     except Exception as e:
-        checks["database"] = f"error: {str(e)[:100]}"
+        checks["database"] = f"error: {str(e)[:180]}"
         checks["status"] = "degraded"
     return checks
 
 
-# Registra rotas da API
-app.include_router(auth.router)
-app.include_router(payments.router)
-app.include_router(scans.router)
-app.include_router(audit.router)
+# Register only routers that imported successfully.
+for _router_module in (auth, payments, scans, audit):
+    if _router_module is not None:
+        app.include_router(_router_module.router)
 
 
 # Frontend static delivery.
