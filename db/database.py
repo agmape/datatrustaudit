@@ -20,7 +20,15 @@ else:
     os.makedirs(DB_DIR, exist_ok=True)
     DB_FILE = os.path.join(DB_DIR, "gtmaudit.db")
 
-DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{DB_FILE}"
+_DATABASE_URL_FROM_ENV = os.getenv("DATABASE_URL")
+DATABASE_URL = _DATABASE_URL_FROM_ENV or f"sqlite:///{DB_FILE}"
+IS_EPHEMERAL_SERVERLESS_DB = bool(IS_VERCEL and not _DATABASE_URL_FROM_ENV)
+PERSISTENT_DATABASE_CONFIGURED = bool(
+    (not IS_VERCEL) or (_DATABASE_URL_FROM_ENV and not _DATABASE_URL_FROM_ENV.startswith("sqlite"))
+)
+
+if IS_EPHEMERAL_SERVERLESS_DB:
+    print("[WARN] DATABASE_URL not configured on Vercel; /tmp SQLite is ephemeral and must not be used for production entitlements/history.")
 
 # Create SQLAlchemy engine — SQLite needs check_same_thread=False
 connect_args = {}
