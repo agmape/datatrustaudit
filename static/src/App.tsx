@@ -3,10 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { PlanProvider } from "@/context/PlanContext";
 import { I18nProvider } from "@/context/I18nContext";
-import { AuthProvider } from "@/context/AuthContext";
-import { SubscriptionProvider } from "@/context/SubscriptionContext";
 import { LocaleProvider } from "@/context/LocaleContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 
@@ -21,10 +18,7 @@ const App = () => (
     <ThemeProvider>
       <I18nProvider>
         <LocaleProvider>
-          <AuthProvider>
-            <SubscriptionProvider>
-              <PlanProvider>
-                <TooltipProvider>
+          <TooltipProvider>
                   <Toaster />
                   <Sonner />
                   <BrowserRouter>
@@ -36,10 +30,7 @@ const App = () => (
                       <Route path="*" element={<NotFound />} />
                     </Routes>
                   </BrowserRouter>
-                </TooltipProvider>
-              </PlanProvider>
-            </SubscriptionProvider>
-          </AuthProvider>
+          </TooltipProvider>
         </LocaleProvider>
       </I18nProvider>
     </ThemeProvider>
