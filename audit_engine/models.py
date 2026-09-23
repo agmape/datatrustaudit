@@ -330,6 +330,8 @@ class PrivacyAnalysisResult:
     estimated_risk_exposure: str = "Insufficient data"
     compliance_score: int = 0
     confidence_level: str = "Assessment based on publicly observable behavior only"
+    score_basis: str = "Technical risk heuristic; not a legal compliance percentage."
+    score_deductions: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -345,6 +347,8 @@ class PrivacyAnalysisResult:
             "estimatedRiskExposure": self.estimated_risk_exposure,
             "complianceScore": self.compliance_score,
             "confidenceLevel": self.confidence_level,
+            "scoreBasis": self.score_basis,
+            "scoreDeductions": self.score_deductions,
         }
 
 
@@ -430,6 +434,7 @@ class AuditScores:
     datalayer_quality: int
     consent_integrity: int
     privacy_risk: int       # 0=low risk (good), 100=high risk (bad) – stored as risk, displayed inverted
+    explanation: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -439,6 +444,7 @@ class AuditScores:
             "datalayerQualityScore": self.datalayer_quality,
             "consentIntegrityScore": self.consent_integrity,
             "privacyRiskScore": self.privacy_risk,
+            "explanation": self.explanation,
         }
 
 
