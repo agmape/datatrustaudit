@@ -16,7 +16,6 @@ export interface EmbedCode {
     estimatedFine: string;
     description: string;
   };
-  // Novos campos para auditoria rigorosa
   detectedData: string[];
   lgpdArticles: string[];
   scriptAnalysis?: {
@@ -53,7 +52,6 @@ export interface Event {
     description: string;
   };
   description?: string;
-  // Novos campos para eventos reais
   dataCollected?: string;
   lgpdCompliant?: boolean;
   violationReason?: string | null;
@@ -88,7 +86,7 @@ export interface ViolationRisk {
 export interface LegalSummary {
   dataCollectionSeverity: 'ok' | 'medium' | 'high' | 'critical';
   proofOfDamage: 'none' | 'presumed' | 'proven' | 'material';
-  companySize: 'small' | 'medium' | 'large';
+  companySize: 'unknown' | 'small' | 'medium' | 'large';
   totalRiskLevel: 'low' | 'medium' | 'high' | 'critical';
   estimatedTotalFine: string;
 }
@@ -111,7 +109,6 @@ export interface AuditResult {
     highViolations: number;
     mediumViolations: number;
   };
-  // Novos campos para auditoria completa
   analysisMethod?: string;
   websiteUrl?: string;
   auditTimestamp?: string;
