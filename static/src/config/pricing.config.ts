@@ -123,7 +123,11 @@ export const PRICING_CONFIG: Record<PlanType, PlanConfig> = {
             'plans.premium.features.advanced_recommendations',
             'plans.premium.features.lgpd_analysis',
         ],
-        lockedKeys: [],
+        lockedKeys: [
+            'plans.pro.locked.realtime',
+            'plans.pro.locked.deep_scan',
+            'plans.free.locked.history',
+        ],
         pricing: {
             monthly: 149.90,
             annual: 1439.04,
