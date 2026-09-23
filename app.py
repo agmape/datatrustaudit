@@ -75,4 +75,13 @@ except Exception as exc:  # last-resort serverless safety net
             status_code=404,
         )
 
+# Ask Vercel's FastAPI integration to promote the Vite build to static CDN
+# delivery. This keeps normal page loads out of the Python function entirely.
+# The method is provided by Vercel's FastAPI runtime; the guard preserves local
+# compatibility with stock FastAPI.
+_frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dist")
+_vercel_frontend = getattr(app, "frontend", None)
+if callable(_vercel_frontend) and os.path.isdir(_frontend_dir):
+    _vercel_frontend("/", directory=_frontend_dir)
+
 __all__ = ["app"]
