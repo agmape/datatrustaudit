@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from .models import AuditResult, DataQualityNote, TagFinding
 from .browser_fetcher import BrowserScanResult
-from .tag_detector import detect_tags
+from .tag_detector import detect_tags, VENDOR_CATALOG
 from .gtm_analyzer import analyze_gtm
 from .event_auditor import audit_events
 from .datalayer_auditor import audit_datalayer
@@ -94,9 +94,42 @@ def _build_data_quality_notes(
     return notes
 
 
-def _find_tags_before_consent(html: str, tags: List[TagFinding]) -> List[TagFinding]:
-    """Identify tags that appear BEFORE the first CMP signal in the HTML source."""
+def _find_tags_before_consent(html: str, tags: List[TagFinding], scan: Optional[BrowserScanResult] = None) -> List[TagFinding]:
+    """Return trackers observed before an actionable consent signal.
+
+    Evidence priority:
+    1. Network requests captured during the browser's initial no-interaction
+       snapshot. This is the strongest external evidence that a tracker fired.
+    2. HTML source order relative to the earliest CMP/Consent Mode signal.
+       This is only a heuristic and must not be presented as runtime proof.
+    """
     import re
+
+    found: List[TagFinding] = []
+    seen = set()
+
+    # Runtime evidence: BrowserScanResult.before_consent_requests is captured
+    # after initial page load and before this scanner performs consent actions
+    # (the scanner currently performs none). Match requests to vendor domains.
+    if scan is not None:
+        for req in getattr(scan, "before_consent_requests", []) or []:
+            req_url = getattr(req, "url", "") or ""
+            if not req_url:
+                continue
+            for tag in tags:
+                if tag.id in seen or tag.type == "consent":
+                    continue
+                vendor = VENDOR_CATALOG.get(tag.id, {})
+                if any(re.search(pat, req_url, re.IGNORECASE) for pat in vendor.get("url_patterns", [])):
+                    tag.is_before_consent = True
+                    # Preserve the strongest evidence on the finding itself.
+                    tag.confidence = "high"
+                    tag.detection_method = "network_request"
+                    tag.matched_pattern = req_url[:160]
+                    found.append(tag)
+                    seen.add(tag.id)
+
+    # Static source-order heuristic for vendors not proven by runtime traffic.
     cmp_signals = [
         r"consent\.cookiebot\.com",
         r"cdn\.cookielaw\.org",
@@ -109,21 +142,21 @@ def _find_tags_before_consent(html: str, tags: List[TagFinding]) -> List[TagFind
     ]
     cmp_pos = None
     for pat in cmp_signals:
-        m = re.search(pat, html, re.IGNORECASE)
-        if m and (cmp_pos is None or m.start() < cmp_pos):
-            cmp_pos = m.start()
+        match = re.search(pat, html or "", re.IGNORECASE)
+        if match and (cmp_pos is None or match.start() < cmp_pos):
+            cmp_pos = match.start()
 
-    if cmp_pos is None:
-        return []
+    if cmp_pos is not None:
+        for tag in tags:
+            if tag.id in seen or tag.type == "consent":
+                continue
+            if tag.type in ("analytics", "advertising", "heatmap", "marketing", "ab_testing"):
+                if tag.position is not None and tag.position > 0 and tag.position < cmp_pos:
+                    tag.is_before_consent = True
+                    found.append(tag)
+                    seen.add(tag.id)
 
-    before = []
-    for tag in tags:
-        if tag.type == "consent":
-            continue
-        if tag.type in ("analytics", "advertising", "heatmap", "marketing") and tag.position is not None:
-            if tag.position < cmp_pos:
-                before.append(tag)
-    return before
+    return found
 
 
 def _build_regulatory_exposure(
@@ -294,7 +327,7 @@ def run_audit(
 
     # ── 2. Tags before consent ────────────────────────────────────────────────
     try:
-        tags_before_consent = _find_tags_before_consent(html, tags)
+        tags_before_consent = _find_tags_before_consent(html, tags, scan=scan)
     except Exception:
         tags_before_consent = []
 
@@ -372,9 +405,10 @@ def run_audit(
 
     # ── 12. Personal data detection ──────────────────────────────────────────
     try:
-        # Determine consent state for timing context
-        _has_cmp = consent_result.cmp_detected if consent_result else False
-        _consent_state = "unknown" if not _has_cmp else "accepted"  # conservative default
+        # This scanner never clicks an accept button. A fresh browser context can
+        # therefore provide pre-interaction evidence, but CMP presence NEVER means
+        # that consent was accepted. Static fallback cannot determine consent state.
+        _consent_state = "before" if not getattr(scan, "fallback_used", False) else "unknown"
         personal_data_findings = detect_personal_data(
             scan_result=scan,
             url=url,
