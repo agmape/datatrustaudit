@@ -24,7 +24,6 @@ from db.models import User, Scan
 
 router = APIRouter(prefix="/api/audit", tags=["Audit"])
 
-VALID_PLANS = {"free", "pro", "premium"}
 
 # ── Timeouts ────────────────────────────────────────────────────────────────
 # Browser Playwright timeout: 60s — domcontentloaded + 10s networkidle2 cap
@@ -334,32 +333,9 @@ def _failed_response(code: str, errors: Optional[List[Dict[str, Any]]] = None, s
     )
 
 
-def _finalize_scan_record(db: Session, record: Optional[Scan], status: str, response: Optional[dict] = None) -> None:
-    if record is None:
-        return
-    try:
-        record.status = status
-        record.completed_at = datetime.utcnow()
-        if response is not None:
-            record.score = response.get("score")
-            record.raw_data = response
-            record.scan_method = response.get("scanMethod")
-            record.scan_credit_consumed = bool(response.get("scan_credit_consumed"))
-        else:
-            record.scan_credit_consumed = False
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        print(f"[api/audit] Could not persist scan result: {exc}")
-
-
 @router.post("")
 @router.post("/")
-async def run_direct_audit(
-    payload: AuditRequest,
-    current_user: Optional[User] = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+async def run_direct_audit(payload: AuditRequest):
     # ── 1. Valida e sanitiza URL ─────────────────────────────────────────────
     try:
         url = normalize_url(payload.url)
