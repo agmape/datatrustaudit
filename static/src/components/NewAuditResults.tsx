@@ -480,7 +480,7 @@ ${violationsText}
 
                         <TabsTrigger value="deep" className="flex items-center gap-1.5 text-xs rounded-lg whitespace-nowrap shrink-0">
                             <Sparkles className="w-3.5 h-3.5" />
-                            {t('audit_nav.aiPro')}
+                            Análise IA
                             {!isFeatureAvailable('deepAnalysis') && <Lock className="w-3 h-3 opacity-50" />}
                         </TabsTrigger>
 
