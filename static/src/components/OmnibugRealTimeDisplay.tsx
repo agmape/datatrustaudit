@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,41 +33,25 @@ const OmnibugRealTimeDisplay = ({ url, onComplete }: OmnibugRealTimeDisplayProps
   const [currentStep, setCurrentStep] = useState('');
   const [progress, setProgress] = useState(0);
   const [showConfig, setShowConfig] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const handleAnalysis = async () => {
     if (!url) return;
     
     setIsAnalyzing(true);
-    setProgress(0);
-    setCurrentStep('Conectando ao site...');
+    setAnalysisError(null);
+    setProgress(15);
+    setCurrentStep('Executando captura real no backend...');
     
     try {
       const omnibugService = OmnibugRealDataService.getInstance();
-      
-      // Simular progresso
-      const steps = [
-        'Conectando ao site...',
-        'Capturando código fonte...',
-        'Analisando scripts em tempo real...',
-        'Detectando eventos GA4...',
-        'Verificando Meta Pixel...',
-        'Analisando DataLayer...',
-        'Verificando compliance LGPD...',
-        'Gerando relatório completo...'
-      ];
-      
-      for (let i = 0; i < steps.length; i++) {
-        setCurrentStep(steps[i]);
-        setProgress((i + 1) / steps.length * 100);
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-      
       const analysisResults = await omnibugService.captureRealData(url);
+      setProgress(100);
       setResults(analysisResults);
       onComplete?.(analysisResults);
-      
     } catch (error) {
-      console.error('Erro na análise Omnibug:', error);
+      console.error('Erro na análise em tempo real:', error);
+      setAnalysisError(error instanceof Error ? error.message : 'Falha na captura real.');
     } finally {
       setIsAnalyzing(false);
       setCurrentStep('');
@@ -148,7 +132,7 @@ const OmnibugRealTimeDisplay = ({ url, onComplete }: OmnibugRealTimeDisplayProps
           </div>
           <Progress value={progress} className="w-full" />
           <p className="text-xs text-center text-muted-foreground">
-            Analisando como Omnibug: {Math.round(progress)}%
+            Aguardando evidências reais do site: {Math.round(progress)}%
           </p>
         </CardContent>
       </Card>
@@ -187,7 +171,7 @@ const OmnibugRealTimeDisplay = ({ url, onComplete }: OmnibugRealTimeDisplayProps
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-red-600">{results.compliance.violations.length}</div>
-              <div className="text-sm text-muted-foreground">Violações LGPD</div>
+              <div className="text-sm text-muted-foreground">Indicadores técnicos</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">{results.performance.loadTime}ms</div>
