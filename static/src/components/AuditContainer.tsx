@@ -574,19 +574,19 @@ const AuditContainer = ({ onStateChange }: AuditContainerProps = {}) => {
               confidenceLevel: 'low',
               consentRisks: [],
               disclosureGaps: [],
-              violationsCount: navigationResult.violationsFound?.length || 0,
+              violationsCount: navigationResult.violations?.length || 0,
             } as any,
             score: navigationResult.summary?.complianceScore || 0,
             summary: {
               totalTags: navigationResult.allTags?.length || 0,
-              consentDetected: navigationResult.summary?.consentDetected || false,
+              consentDetected: Boolean(navigationResult.consentDetected),
               hasUniversalAnalytics: false,
               violationsCount: navigationResult.violationsFound?.length || 0,
               estimatedFine: navigationResult.summary?.estimatedFine || "R$ 0",
               piiExposureCount: navigationResult.piiExposureCount || 0,
               securityIssuesCount: navigationResult.securityIssuesCount || 0
             },
-            pageReports: navigationResult.pages,
+            pageReports: navigationResult.pageReports || navigationResult.pages,
           }} 
         />
       )}
