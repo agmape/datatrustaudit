@@ -193,7 +193,7 @@ export async function downloadAuditPDF(result: ExportAuditResult): Promise<void>
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(148, 163, 184); // slate-400
-    doc.text('Relatório de Auditoria de Privacidade & Conformidade LGPD', margin, 26);
+    doc.text('Relatório de Auditoria Técnica de Dados & Privacidade', margin, 26);
 
     // Score badge (top-right)
     const score = result.score ?? 0;
@@ -250,12 +250,12 @@ export async function downloadAuditPDF(result: ExportAuditResult): Promise<void>
     const summary = result.summary ?? {};
     const summaryRows = [
         ['Tags Detectadas',          String(summary.totalTags ?? result.tags?.length ?? 0)],
-        ['Violações Identificadas',  String(summary.totalViolations ?? result.violations?.length ?? 0)],
+        ['Indicadores Técnicos',      String(summary.totalViolations ?? result.violations?.length ?? 0)],
         ['Instâncias de PII',        String(summary.piiExposureCount ?? result.personalDataFindings?.length ?? 0)],
         ['Dados Sensíveis',          String(summary.sensitiveDataCount ?? result.sensitiveDataFindings?.length ?? 0)],
         ['CMP Detectado',            (summary.consentDetected || result.consent?.cmpDetected) ? 'Sim' : '❌ Não'],
-        ['Risco LGPD',               result.privacy?.lgpdRisk?.toUpperCase() ?? '—'],
-        ['Exposição Estimada',       result.privacy?.estimatedRiskExposure ?? summary.estimatedFine ?? '—'],
+        ['Risco Técnico',             result.privacy?.lgpdRisk?.toUpperCase() ?? '—'],
+        ['Contexto de Exposição',     result.privacy?.estimatedRiskExposure ?? summary.estimatedFine ?? '—'],
         ['Jurisdição',               result.privacy?.jurisdiction ?? '—'],
     ];
 
@@ -276,12 +276,12 @@ export async function downloadAuditPDF(result: ExportAuditResult): Promise<void>
     // ════════════════════════════════════════════════════════════════════════
     const sensitiveData = result.sensitiveDataFindings ?? [];
     if (sensitiveData.length > 0) {
-        sectionHeader('Dados Pessoais Sensíveis Detectados — Art. 5º II LGPD (CRÍTICO)', '🔴');
+        sectionHeader('Sinais de Dados Pessoais Sensíveis', '🔴');
         doc.setFontSize(8);
         doc.setTextColor(...BRAND.red);
         doc.setFont('helvetica', 'italic');
         doc.text(
-            '⚠ Dosimetria agravada (Art. 52 §1º LGPD): exposição de dados sensíveis eleva o teto da multa ANPD.',
+            'Sinais técnicos de dados sensíveis exigem revisão de finalidade, necessidade, base legal e controles; o scan não determina infração ou sanção.',
             margin, cursorY
         );
         cursorY += 6;
@@ -321,7 +321,7 @@ export async function downloadAuditPDF(result: ExportAuditResult): Promise<void>
     const piiData = result.personalDataFindings ?? [];
     if (piiData.length > 0) {
         checkPageBreak(20);
-        sectionHeader('PII em Texto Claro — Dados Pessoais Expostos', '🟠');
+        sectionHeader('Sinais de Dados Pessoais (PII)', '🟠');
 
         autoTable(doc, {
             startY: cursorY,
@@ -393,11 +393,11 @@ export async function downloadAuditPDF(result: ExportAuditResult): Promise<void>
     const violations = result.violations ?? [];
     if (violations.length > 0) {
         checkPageBreak(20);
-        sectionHeader('Violações de Privacidade Identificadas', '⚖');
+        sectionHeader('Indicadores Técnicos de Privacidade', '⚖');
 
         autoTable(doc, {
             startY: cursorY,
-            head: [['Violação', 'Severidade', 'Descrição', 'Impacto']],
+            head: [['Indicador', 'Severidade', 'Descrição', 'Impacto Potencial']],
             body: violations.map(v => [
                 safeStr(v.title),
                 safeStr(v.severity).toUpperCase(),
@@ -461,7 +461,7 @@ export async function downloadAuditPDF(result: ExportAuditResult): Promise<void>
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(7);
         doc.setFont('helvetica', 'normal');
-        doc.text('DataTrust Audit — Confidencial. Gerado para uso interno e apresentação a DPOs.', margin, pageH - 4.5);
+        doc.text('DataTrust Audit — Evidência técnica observável; não constitui parecer jurídico ou certificação de conformidade.', margin, pageH - 4.5);
         doc.text(`Pág. ${i} / ${totalPages}`, pageW - margin, pageH - 4.5, { align: 'right' });
         doc.text(`datatrustaudit.com | ${formatDateTime()}`, pageW / 2, pageH - 4.5, { align: 'center' });
     }
@@ -528,12 +528,12 @@ export function downloadAuditExcel(result: ExportAuditResult): void {
         [],
         ['MÉTRICAS PRINCIPAIS'],
         ['Total de Tags',        summary.totalTags ?? result.tags?.length ?? 0],
-        ['Total de Violações',   summary.totalViolations ?? result.violations?.length ?? 0],
+        ['Indicadores Técnicos',  summary.totalViolations ?? result.violations?.length ?? 0],
         ['Instâncias de PII',    summary.piiExposureCount ?? result.personalDataFindings?.length ?? 0],
         ['Dados Sensíveis',      summary.sensitiveDataCount ?? result.sensitiveDataFindings?.length ?? 0],
         ['CMP Detectado',        (summary.consentDetected || result.consent?.cmpDetected) ? 'Sim' : 'Não'],
-        ['Risco LGPD',           result.privacy?.lgpdRisk?.toUpperCase() ?? '—'],
-        ['Exposição Estimada',   result.privacy?.estimatedRiskExposure ?? summary.estimatedFine ?? '—'],
+        ['Risco Técnico',         result.privacy?.lgpdRisk?.toUpperCase() ?? '—'],
+        ['Contexto de Exposição', result.privacy?.estimatedRiskExposure ?? summary.estimatedFine ?? '—'],
         ['Jurisdição',           result.privacy?.jurisdiction ?? '—'],
         ['Framework',            result.privacy?.framework ?? '—'],
         [],
@@ -558,7 +558,7 @@ export function downloadAuditExcel(result: ExportAuditResult): void {
         ['Categoria / Tipo', 'Tag Responsável', 'Evidência Capturada', 'Artigo LGPD', 'Severidade'],
     );
 
-    // ── 3. Vazamentos de PII ──────────────────────────────────────────────────
+    // ── 3. Sinais de dados pessoais ─────────────────────────────────────────────
     const piiRows = (result.personalDataFindings ?? []).map(f => [
         safeStr(f.type),
         safeStr(f.tag),
@@ -566,7 +566,7 @@ export function downloadAuditExcel(result: ExportAuditResult): void {
         safeStr(f.severity),
     ]);
     addSheet(
-        'Vazamentos de PII',
+        'Sinais de PII',
         piiRows,
         ['Tipo de Dado', 'Tag / Origem', 'Valor Capturado', 'Risco'],
     );
@@ -586,7 +586,7 @@ export function downloadAuditExcel(result: ExportAuditResult): void {
         ['Nome da Tag', 'Tipo', 'ID', 'Pré-Consentimento', 'Confiança', 'Severidade'],
     );
 
-    // ── 5. Violações de Privacidade ───────────────────────────────────────────
+    // ── 5. Indicadores técnicos de privacidade ─────────────────────────────────
     const violationRows = (result.violations ?? []).map(v => [
         safeStr(v.title),
         safeStr(v.severity),
@@ -594,9 +594,9 @@ export function downloadAuditExcel(result: ExportAuditResult): void {
         safeStr(v.impact),
     ]);
     addSheet(
-        'Violações',
+        'Indicadores',
         violationRows,
-        ['Violação', 'Severidade', 'Descrição', 'Impacto Potencial'],
+        ['Indicador', 'Severidade', 'Descrição', 'Impacto Potencial'],
     );
 
     // ── 6. Recomendações ──────────────────────────────────────────────────────
@@ -630,13 +630,13 @@ export function downloadAuditExcel(result: ExportAuditResult): void {
         safeStr(t.name),
         safeStr(t.type),
         safeStr(t.tagId),
-        'Disparou antes do opt-in do visitante',
-        'ALTO — Art. 7º e 8º LGPD',
+        'Observado/indicado antes de sinal de consentimento',
+        'Requer revisão de base legal e consentimento',
     ]);
     addSheet(
         'Tags Pré-Consentimento',
         preConsentRows,
-        ['Tag', 'Tipo', 'ID', 'Problema', 'Base Legal Violada'],
+        ['Tag', 'Tipo', 'ID', 'Evidência', 'Contexto Regulatório'],
     );
 
     // ── Save ──────────────────────────────────────────────────────────────────
