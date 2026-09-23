@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from api.auth import get_current_user
 from audit_engine.browser_fetcher import browser_scan
+from audit_engine.url_security import UnsafeURLError, validate_public_url
 from audit_engine.orchestrator import run_audit
 from audit_engine.credit_rules import should_consume_scan_credit, get_evidence_count
 from db.models import User
@@ -48,33 +49,11 @@ def _friendly_message(code: str) -> str:
 
 
 def normalize_url(raw_url: str) -> str:
-    value = (raw_url or "").strip()
-    if not value:
-        raise ValueError("INVALID_URL")
-
-    if not re.match(r"^https?://", value, re.IGNORECASE):
-        value = f"https://{value}"
-
-    parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("INVALID_URL")
-
-    hostname = parsed.hostname or ""
-    if not hostname or "." not in hostname:
-        raise ValueError("INVALID_URL")
-
-    if hostname.lower() in {"localhost", "localhost.localdomain"}:
-        raise ValueError("INVALID_URL")
-
+    """Validate a user-supplied scan target and reject SSRF/private-network targets."""
     try:
-        ip = ipaddress.ip_address(hostname)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
-            raise ValueError("INVALID_URL")
-    except ValueError as exc:
-        if str(exc) == "INVALID_URL":
-            raise
-
-    return value
+        return validate_public_url(raw_url)
+    except UnsafeURLError as exc:
+        raise ValueError("INVALID_URL") from exc
 
 
 def _safe_dict(value: Any) -> Any:
@@ -408,6 +387,8 @@ async def run_direct_audit(payload: AuditRequest, current_user: Optional[User] =
                 "message": f"Timeout de 90s e fallback estático também falhou: {fb_exc}"
             }])
 
+    except UnsafeURLError as exc:
+        return _failed_response("INVALID_URL", [{"message": str(exc)}], status_code=400)
     except (socket.gaierror, OSError) as exc:
         return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
     except Exception as exc:
