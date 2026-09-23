@@ -179,7 +179,7 @@ const Dashboard = ({ result }: DashboardProps) => {
                     <CardContent className="pt-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-red-100 text-sm">Violações de Privacidade</p>
+                                <p className="text-red-100 text-sm">Indicadores de Privacidade</p>
                                 <p className="text-3xl font-bold">{result.privacy.total_violations}</p>
                             </div>
                             <AlertTriangle className="w-10 h-10 text-red-200" />
@@ -365,12 +365,12 @@ const Dashboard = ({ result }: DashboardProps) => {
                                                 <p className="font-semibold">{data.fullName}</p>
                                                 <p className="text-sm text-gray-600">Linha: {data.lineNumber}</p>
                                                 <p className="text-sm">
-                                                    Risco: {data.risk === 100 ? 'Crítico' :
+                                                    Risco técnico: {data.risk === 100 ? 'Crítico' :
                                                         data.risk === 75 ? 'Alto' :
                                                             data.risk === 50 ? 'Médio' : 'Baixo'}
                                                 </p>
                                                 {data.isViolation === 1 && (
-                                                    <Badge className="mt-1 bg-red-100 text-red-800">Violação LGPD</Badge>
+                                                    <Badge className="mt-1 bg-amber-100 text-amber-800">Sinal pré-consentimento</Badge>
                                                 )}
                                             </div>
                                         );
