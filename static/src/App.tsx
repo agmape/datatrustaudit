@@ -9,17 +9,9 @@ import { AuthProvider } from "@/context/AuthContext";
 import { SubscriptionProvider } from "@/context/SubscriptionContext";
 import { LocaleProvider } from "@/context/LocaleContext";
 import { ThemeProvider } from "@/context/ThemeContext";
-import UpgradeModal from "@/components/UpgradeModal";
-import AdminPlanTesting from "@/components/AdminPlanTesting";
 
 // Pages
 import Index from "./pages/Index";
-import PricingPage from "./pages/Pricing";
-import CheckoutPage from "./pages/Checkout";
-import PaymentSuccess from "./pages/PaymentSuccess";
-import PaymentPending from "./pages/PaymentPending";
-import PaymentFailed from "./pages/PaymentFailed";
-import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,23 +28,9 @@ const App = () => (
                   <Toaster />
                   <Sonner />
                   <BrowserRouter>
-                    <UpgradeModal />
-                    <AdminPlanTesting />
                     <Routes>
                       {/* Main app */}
                       <Route path="/" element={<Index />} />
-
-                      {/* Pricing & Checkout */}
-                      <Route path="/pricing" element={<PricingPage />} />
-                      <Route path="/checkout" element={<CheckoutPage />} />
-
-                      {/* Post-payment callbacks (Kiwify redirects) */}
-                      <Route path="/payment/success" element={<PaymentSuccess />} />
-                      <Route path="/payment/pending" element={<PaymentPending />} />
-                      <Route path="/payment/failure" element={<PaymentFailed />} />
-
-                      {/* Account Settings */}
-                      <Route path="/settings" element={<SettingsPage />} />
 
                       {/* Catch-all */}
                       <Route path="*" element={<NotFound />} />
