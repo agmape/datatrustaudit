@@ -1650,7 +1650,7 @@ async def deep_analyze(request: Request):
                 continue
 
             audit_result = await asyncio.to_thread(run_audit, page_url, scan, True)
-            normalized = _normalize_audit_response(page_url, "premium", scan, audit_result)
+            normalized = _normalize_audit_response(page_url, scan, audit_result)
 
             tags = normalized.get("tags") or []
             events = normalized.get("events") or []
