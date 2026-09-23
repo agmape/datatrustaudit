@@ -1,44 +1,60 @@
-
 import { ViolationRisk, EmbedCode, Event } from '@/types/audit';
 
-export const generateViolationRisks = (embedCodes: EmbedCode[], events: Event[]): ViolationRisk[] => {
-  const violations: ViolationRisk[] = [];
+/**
+ * Backwards-compatible adapter. The historical type is named ViolationRisk,
+ * but values produced here are technical risk indicators, not legal findings.
+ */
+export const generateViolationRisks = (
+  embedCodes: EmbedCode[],
+  events: Event[],
+): ViolationRisk[] => {
+  const indicators: ViolationRisk[] = [];
 
-  // Analyze embed codes
-  embedCodes.forEach(code => {
+  embedCodes.forEach((code) => {
     if (code.violationSeverity && code.violationSeverity !== 'ok') {
-      const dataTypeLabel = code.dataType === 'sensitive' ? 'Dados sensíveis' :
-                           code.dataType === 'simple' ? 'Dados pessoais simples' : 'Outros dados';
+      const dataTypeLabel =
+        code.dataType === 'sensitive'
+          ? 'Possível dado sensível'
+          : code.dataType === 'simple'
+            ? 'Possível dado pessoal'
+            : 'Tipo não determinado';
 
-      violations.push({
+      indicators.push({
         eventName: code.name,
         dataType: dataTypeLabel,
-        hasConsent: !code.isBeforeConsent || false,
+        hasConsent: code.isBeforeConsent === false,
         severity: code.violationSeverity,
-        legalRisk: code.legalRisk?.description || 'Risco não avaliado',
-        potentialFine: code.legalRisk?.estimatedFine || '—',
-        description: code.violationMessage || 'Violação detectada sem descrição específica'
+        legalRisk: code.legalRisk?.description || 'Requer verificação manual',
+        potentialFine: 'Não estimável por scanner externo',
+        description:
+          code.violationMessage ||
+          'Indicador técnico observado; não constitui determinação jurídica.',
       });
     }
   });
 
-  // Analyze events
-  events.forEach(event => {
+  events.forEach((event) => {
     if (event.violationSeverity && event.violationSeverity !== 'ok') {
-      const dataTypeLabel = event.dataType === 'sensitive' ? 'Dados sensíveis' :
-                           event.dataType === 'simple' ? 'Dados pessoais simples' : 'Outros dados';
+      const dataTypeLabel =
+        event.dataType === 'sensitive'
+          ? 'Possível dado sensível'
+          : event.dataType === 'simple'
+            ? 'Possível dado pessoal'
+            : 'Tipo não determinado';
 
-      violations.push({
+      indicators.push({
         eventName: `Evento: ${event.name}`,
         dataType: dataTypeLabel,
         hasConsent: event.hasConsent,
         severity: event.violationSeverity,
-        legalRisk: event.legalRisk?.description || 'Evento com parâmetros inadequados',
-        potentialFine: event.legalRisk?.estimatedFine || '—',
-        description: event.validation?.validationMessage || 'Evento com problemas de implementação'
+        legalRisk: event.legalRisk?.description || 'Requer verificação manual',
+        potentialFine: 'Não estimável por scanner externo',
+        description:
+          event.validation?.validationMessage ||
+          'Indicador técnico de implementação; não constitui determinação jurídica.',
       });
     }
   });
 
-  return violations;
+  return indicators;
 };
