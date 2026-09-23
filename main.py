@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse, urljoin
 from contextlib import asynccontextmanager
+from audit_engine.url_security import UnsafeURLError, validate_public_url, validate_redirect_target
 
 # Load environment variables — override=True ensures .env always wins over system env
 from dotenv import load_dotenv
@@ -1412,80 +1413,62 @@ def _build_headers(ua: str, url: str) -> Dict[str, str]:
     }
 
 def smart_fetch(url: str, timeout: int = 20) -> str:
-    """
-    Fetches a URL with browser-like headers and retry on 403/429/503.
-    Returns HTML string. Raises BlockedByRobots if all attempts fail.
-    """
+    """Legacy static fetch with SSRF-safe redirect handling and TLS verification."""
+    safe_url = validate_public_url(url)
     session = requests.Session()
     last_status = 0
     last_error = None
 
     for idx, ua in enumerate(_BROWSER_AGENTS):
         try:
-            resp = session.get(
-                url,
-                headers=_build_headers(ua, url),
-                timeout=timeout,
-                allow_redirects=True,
-                verify=False
-            )
-            last_status = resp.status_code
+            current_url = safe_url
+            for _redirect_count in range(6):
+                resp = session.get(
+                    current_url,
+                    headers=_build_headers(ua, current_url),
+                    timeout=timeout,
+                    allow_redirects=False,
+                    verify=True,
+                )
+                last_status = resp.status_code
 
-            if resp.status_code == 200:
-                resp.encoding = resp.apparent_encoding or "utf-8"
-                return resp.text
+                if 300 <= resp.status_code < 400:
+                    current_url = validate_redirect_target(
+                        current_url,
+                        resp.headers.get("Location", ""),
+                    )
+                    continue
 
-            if resp.status_code in (401, 403, 429, 503):
-                print(f" Attempt {idx+1}: got {resp.status_code} for {url}, retrying...")
-                continue  # try next UA
+                if resp.status_code == 200:
+                    resp.encoding = resp.apparent_encoding or "utf-8"
+                    return resp.text
 
-            # Other 4xx/5xx — raise immediately
-            resp.raise_for_status()
+                if resp.status_code in (401, 403, 429, 503):
+                    break
 
-        except requests.RequestException as e:
-            last_error = e
-            print(f" Attempt {idx+1} network error for {url}: {e}")
+                resp.raise_for_status()
+            else:
+                raise UnsafeURLError("Too many redirects")
+
+        except (requests.RequestException, UnsafeURLError) as exc:
+            last_error = exc
+            print(f"[legacy-fetch] attempt {idx + 1} failed: {type(exc).__name__}: {exc}")
             continue
 
-    # All attempts failed
     if last_status in (401, 403):
         raise BlockedByRobots(
-            f"O site {url} bloqueia solicitações automáticas (HTTP {last_status}). "
-            "Tente usar a aba Upload para analisar o GTM Container JSON exportado, "
-            "ou use a aba View-Source depois de abrir a página no navegador."
+            f"O site bloqueou a coleta automatizada (HTTP {last_status}). "
+            "O resultado não será inventado; tente novamente ou use uma fonte autorizada."
         )
-
     if last_error:
         raise last_error
+    raise BlockedByRobots("Não foi possível acessar o site com segurança.")
 
-    raise BlockedByRobots(f"Não foi possível acessar {url} após {len(_BROWSER_AGENTS)} tentativas.")
 
 
 # ============================================================
 # ROUTES
 # ============================================================
-
-
-@app.get("/")
-def root():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    # Fallback se não existir dist
-    return JSONResponse({
-        "status": "ok",
-        "message": "DataTrust Audit API v2.0",
-        "docs": "/docs"
-    })
-
-
-@app.get("/health")
-def health():
-    return JSONResponse({
-        "status": "healthy",
-        "version": "2.0.0",
-        "timestamp": datetime.now().isoformat()
-    })
 
 
 def plan_strip_report(report: dict, plan: str) -> None:
