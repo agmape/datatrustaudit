@@ -45,7 +45,7 @@ except Exception as exc:
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static", "dist")
-DB_PATH = os.path.join(BASE_DIR, "db", "tags.json")
+DB_PATH = "/tmp/datatrust-tags.json" if os.getenv("VERCEL") else os.path.join(BASE_DIR, "db", "tags.json")
 
 # Database is optional at boot. A DB/driver/config error must not take down
 # the frontend or health endpoint.
@@ -300,8 +300,7 @@ TAG_PATTERNS = {
         "name": "Meta Pixel (Facebook)",
         "patterns": [
             r"connect\.facebook\.net.*fbevents\.js",
-            r"fbq\s*\(\s*['\"]init['\"]",
-            r"\d{15,16}"  # Facebook Pixel ID
+            r"fbq\s*\(\s*['\"]init['\"]\s*,\s*['\"]?\d{10,20}['\"]?"
         ],
         "type": "advertising",
         "data_collected": ["Fingerprint do navegador", "Comportamento de compra", "Remarketing cross-site"],
@@ -706,35 +705,30 @@ TAG_PATTERNS = {
     }
 }
 
-# Generic Privacy Risks mapping
+# Legacy technical-risk labels retained for backwards-compatible endpoints.
+# No monetary ranges: an external scan cannot determine an administrative fine.
 PRIVACY_RISKS = {
     "consent": {
-        "article": "Consent Requirement",
-        "description": "Tracking before explicit consent",
-        "fine_range": (5000, 20000)
+        "article": "Consent / lawful-basis context requires legal verification",
+        "description": "Tracker appears before an observable consent signal",
     },
     "data_sharing": {
-        "article": "Data Sharing & Advertising",
-        "description": "Third-party sharing without proper disclosure",
-        "fine_range": (10000, 50000)
+        "article": "Third-party data-flow context requires legal verification",
+        "description": "Third-party tracker/data flow observed",
     },
     "sensitive_data": {
-        "article": "High-Risk Tracking",
-        "description": "Use of intrusive/critical tracking tools",
-        "fine_range": (15000, 50000)
+        "article": "Potential high-risk data context requires evidence review",
+        "description": "High-priority technical signal observed",
     },
     "data_protection": {
-        "article": "Data Security",
-        "description": "Use of obsolete or insecure tracking methods",
-        "fine_range": (5000, 30000)
+        "article": "Technical maintenance/security context",
+        "description": "Deprecated or potentially insecure implementation observed",
     },
     "transparency": {
-        "article": "Transparency",
-        "description": "Lack of mechanisms for user choice (CMP)",
-        "fine_range": (2000, 10000)
-    }
+        "article": "Transparency/choice context requires legal verification",
+        "description": "No known CMP was observed during this scan",
+    },
 }
-
 
 def load_db() -> List[Dict]:
     if not os.path.isfile(DB_PATH):
@@ -820,118 +814,91 @@ def detect_tags(html: str) -> List[Dict[str, Any]]:
             if tag["position"] < consent_position and tag["type"] != "consent":
                 tag["isBeforeConsent"] = True
     else:
-        # Se não há CMP, todas as tags de tracking violam LGPD
-        for tag in detected_tags:
-            if tag["type"] in ["analytics", "advertising", "heatmap"]:
-                tag["isBeforeConsent"] = True
+        # Absence of a CMP in static HTML does not prove when a tracker fired.
+        # Keep timing unverified; runtime network evidence is required.
+        pass
     
     return detected_tags
 
 
 def analyze_privacy_compliance(tags: List[Dict], jurisdiction: Dict) -> Dict[str, Any]:
-    """Calcula riscos de privacidade com base no comportamento observável e jurisdição."""
-    violations = []
-    total_min_fine = 0
-    total_max_fine = 0
-    
-    has_consent_tool = any(t["type"] == "consent" for t in tags)
-    has_ua = any(t["id"] == "ua" for t in tags)
-    
+    """Legacy compatibility analysis: technical indicators only, never a legal verdict."""
+    indicators = []
     consent_risks = []
     disclosure_gaps = []
-    
+
+    has_consent_tool = any(t.get("type") == "consent" for t in tags)
+    has_ua = any(t.get("id") == "ua" for t in tags)
+
     for tag in tags:
-        if tag["isBeforeConsent"] and tag["type"] != "consent":
-            violation_type = "consent"
-            if tag["type"] == "advertising":
-                violation_type = "data_sharing"
-            elif tag["lgpdRisk"] == "critical":
-                violation_type = "sensitive_data"
-            
-            risk_info = PRIVACY_RISKS[violation_type]
-            if violation_type == "consent":
-                consent_risks.append(f"{tag['name']} firing before consent")
-            
-            violations.append({
-                "tag": tag["name"],
+        if tag.get("isBeforeConsent") and tag.get("type") != "consent":
+            risk_key = "data_sharing" if tag.get("type") == "advertising" else "consent"
+            risk_info = PRIVACY_RISKS[risk_key]
+            consent_risks.append(f"{tag.get('name')} appears before an observable consent signal")
+            indicators.append({
+                "tag": tag.get("name"),
                 "tagId": tag.get("tagId"),
-                "violation": f"Carregado antes do consentimento (linha {tag['lineNumber']})",
+                "violation": "Technical risk indicator: appears before an observable consent signal",
                 "article": risk_info["article"],
                 "description": risk_info["description"],
-                "severity": tag["lgpdRisk"],
-                "dataCollected": tag["dataCollected"],
-                "estimatedFine": "Indicativo de não conformidade"
+                "severity": "high" if tag.get("type") == "advertising" else "medium",
+                "dataCollected": [],
+                "estimatedFine": "Not estimable from an external technical scan",
+                "confidence": "medium",
+                "evidenceType": "html_order_heuristic",
             })
-            total_min_fine += risk_info["fine_range"][0]
-            total_max_fine += risk_info["fine_range"][1]
-    
-    # Risco adicional se não tem CMP
-    if not has_consent_tool and any(t["type"] in ["analytics", "advertising"] for t in tags):
-        risk_info = PRIVACY_RISKS["transparency"]
-        disclosure_gaps.append("Missing Consent Management Platform (CMP)")
-        violations.append({
-            "tag": "Sistema",
+
+    if not has_consent_tool and any(t.get("type") in {"analytics", "advertising", "heatmap", "marketing"} for t in tags):
+        disclosure_gaps.append("No known CMP observed; lawful basis/consent mechanism requires manual verification")
+        indicators.append({
+            "tag": "Site",
             "tagId": None,
-            "violation": "Nenhuma ferramenta de consentimento (CMP) detectada",
-            "article": risk_info["article"],
-            "description": risk_info["description"],
-            "severity": "critical",
+            "violation": "Technical risk indicator: trackers observed but no known CMP was detected",
+            "article": PRIVACY_RISKS["transparency"]["article"],
+            "description": "Absence of a detected CMP is not proof of legal non-compliance.",
+            "severity": "medium",
             "dataCollected": [],
-            "estimatedFine": "Alto risco de conformidade"
+            "estimatedFine": "Not estimable from an external technical scan",
+            "confidence": "medium",
+            "evidenceType": "html_heuristic",
         })
-        total_min_fine += risk_info["fine_range"][0]
-        total_max_fine += risk_info["fine_range"][1]
-    
-    # Risco adicional se usa Universal Analytics (obsoleto)
+
     if has_ua:
-        disclosure_gaps.append("Using obsolete Universal Analytics")
-        violations.append({
-            "tag": "Universal Analytics",
-            "tagId": None,
-            "violation": "Uso de tecnologia obsoleta (UA descontinuado em julho/2023)",
-            "article": "Data Security Risk",
-            "description": "Falha em manter medidas de segurança atualizadas",
-            "severity": "critical",
-            "dataCollected": ["Dados históricos sem controle"],
-            "estimatedFine": "Vulnerabilidade técnica detectada"
-        })
-        total_min_fine += 10000
-        total_max_fine += 30000
-        
-    # Verificação de Duplicatas e Erros
-    duplicates_count = 0
-    for t in tags:
-        if t.get("isDuplicate"):
-            duplicates_count += 1
-            disclosure_gaps.append(f"Duplicate Tag: {t.get('name')} ({t.get('tagId') or 'N/A'})")
-            violations.append({
-                "tag": t.get("name"),
-                "tagId": t.get("tagId"),
-                "violation": "Implementação Duplicada Detectada",
-                "article": "Data Minimization / Performance",
-                "description": f"A tag foi inserida múltiplas vezes na página, causando disparos duplos e inconsistência de dados.",
-                "severity": "high",
-                "dataCollected": t.get("dataCollected", []),
-                "estimatedFine": "Risco analítico alto"
+        disclosure_gaps.append("Universal Analytics legacy code detected; technical maintenance issue")
+
+    for tag in tags:
+        if tag.get("isDuplicate"):
+            disclosure_gaps.append(f"Duplicate tag: {tag.get('name')} ({tag.get('tagId') or 'N/A'})")
+            indicators.append({
+                "tag": tag.get("name"),
+                "tagId": tag.get("tagId"),
+                "violation": "Technical data-quality indicator: duplicate implementation",
+                "article": "Technical data quality; not a legal finding",
+                "description": "Duplicate signatures may cause duplicate firing or inconsistent measurement.",
+                "severity": "medium",
+                "dataCollected": [],
+                "estimatedFine": "Not estimable from an external technical scan",
+                "confidence": "medium",
+                "evidenceType": "html_heuristic",
             })
-            total_max_fine += 5000
-    
-    estimated_risk_exposure = f"Exposição Potencial (apenas ref.): USD ${int(total_min_fine/5):,} - USD ${int(total_max_fine/5):,}" if violations else "Baixo Risco"
-    
+
+    deduction = min(70, len(indicators) * 10)
     return {
-        "jurisdiction": jurisdiction["region"],
-        "framework": jurisdiction["law_full"],
-        "confidenceLevel": "Avaliação baseada no comportamento público do site (não constitui conselho legal)",
-        "consentRisks": list(set(consent_risks)),
-        "disclosureGaps": list(set(disclosure_gaps)),
-        "violations": violations,
-        "totalViolations": len(violations),
-        "estimatedRiskExposure": estimated_risk_exposure,
+        "jurisdiction": jurisdiction.get("region", "Unknown"),
+        "framework": jurisdiction.get("law_full", "General Privacy"),
+        "confidenceLevel": "Legacy technical heuristic based on public HTML; requires manual verification",
+        "consentRisks": list(dict.fromkeys(consent_risks)),
+        "disclosureGaps": list(dict.fromkeys(disclosure_gaps)),
+        "violations": indicators,  # historical field name kept for API compatibility
+        "totalViolations": len(indicators),
+        "estimatedRiskExposure": (
+            "Monetary sanctions cannot be estimated from an external technical scan."
+        ),
         "hasConsentTool": has_consent_tool,
         "hasUniversalAnalytics": has_ua,
-        "complianceScore": max(0, 100 - (len(violations) * 12)) 
+        "complianceScore": max(0, 100 - deduction),
+        "scoreBasis": "Technical prioritization heuristic; not a legal compliance percentage.",
     }
-
 
 def analyze_datalayer_structure(html: str) -> List[Dict[str, Any]]:
     """Detecta a presença e chaves do dataLayer para identificar vazamentos de PII"""
@@ -1706,8 +1673,8 @@ async def export_pdf(request: Request):
             ["Total de Tags", str(summary.get('totalTags', 0))],
             ["CMP Detectado", "Sim" if summary.get('consentDetected') else "Não"],
             ["Consent Mode v2", "Sim" if summary.get('consentModeV2') else "Não"],
-            ["Violações LGPD", str(summary.get('violationsCount', 0))],
-            ["Multa Estimada", summary.get('estimatedFine', 'R$ 0')]
+            ["Indicadores técnicos de privacidade", str(summary.get('violationsCount', 0))],
+            ["Sanção monetária", summary.get('estimatedFine', 'R$ 0')]
         ]
         summary_table = Table(summary_data, colWidths=[8*cm, 8*cm])
         summary_table.setStyle(TableStyle([
@@ -1743,13 +1710,13 @@ async def export_pdf(request: Request):
             elements.append(tag_table)
             elements.append(Spacer(1, 20))
         
-        # Violações LGPD
+        # Indicadores técnicos de privacidade
         violations = audit_result.get('lgpdAnalysis', {}).get('violations', [])
         if violations:
-            elements.append(Paragraph("<b>Violações LGPD Detectadas</b>", styles['Heading2']))
+            elements.append(Paragraph("<b>Indicadores técnicos de privacidade Detectadas</b>", styles['Heading2']))
             for v in violations[:10]:  # Limitar a 10 violações
                 elements.append(Paragraph(f"• <b>{v.get('tag', 'N/A')}</b> - {v.get('violation', 'N/A')}", normal_style))
-                elements.append(Paragraph(f"  Artigo: {v.get('article', 'N/A')} | Multa: {v.get('estimatedFine', 'N/A')}", 
+                elements.append(Paragraph(f"  Artigo: {v.get('article', 'N/A')} | Sanção: {v.get('estimatedFine', 'N/A')}", 
                     ParagraphStyle('Small', parent=normal_style, fontSize=9, textColor=colors.HexColor('#64748b'))))
         
         # Rodapé
@@ -1810,7 +1777,7 @@ async def export_excel(request: Request):
         ws_summary['B3'] = audit_result.get('url', 'N/A')
         ws_summary['A4'] = "Data:"
         ws_summary['B4'] = audit_result.get('timestamp', '')[:10]
-        ws_summary['A5'] = "Score LGPD:"
+        ws_summary['A5'] = "Score técnico:"
         ws_summary['B5'] = f"{audit_result.get('score', 0)}%"
         
         summary = audit_result.get('summary', {})
@@ -1822,7 +1789,7 @@ async def export_excel(request: Request):
         ws_summary['B9'] = "Sim" if summary.get('consentModeV2') else "Não"
         ws_summary['A10'] = "Total Violações:"
         ws_summary['B10'] = summary.get('violationsCount', 0)
-        ws_summary['A11'] = "Multa Estimada:"
+        ws_summary['A11'] = "Sanção monetária:"
         ws_summary['B11'] = summary.get('estimatedFine', 'R$ 0')
         
         # ===== Aba: Tags =====
@@ -1848,8 +1815,8 @@ async def export_excel(request: Request):
             ws_tags.column_dimensions[get_column_letter(col)].width = 20
         
         # ===== Aba: Violações =====
-        ws_violations = wb.create_sheet("Violações LGPD")
-        v_headers = ["Tag", "Violação", "Artigo LGPD", "Severidade", "Multa Estimada"]
+        ws_violations = wb.create_sheet("Indicadores técnicos de privacidade")
+        v_headers = ["Tag", "Violação", "Artigo LGPD", "Severidade", "Sanção monetária"]
         for col, header in enumerate(v_headers, 1):
             cell = ws_violations.cell(row=1, column=col, value=header)
             cell.fill = PatternFill(start_color="dc2626", end_color="dc2626", fill_type="solid")
@@ -2006,10 +1973,10 @@ FORMATO OBRIGATORIO — use EXATAMENTE esta estrutura Markdown:
 
 CONTEXTO DA AUDITORIA:
 URL: {context.get('url', 'Nao informada')}
-Score LGPD: {context.get('score', 0)}%
+Score técnico: {context.get('score', 0)}%
 Violacoes: {context.get('violations', 0)}
 CMP: {'DETECTADO' if context.get('hasConsentTool') else 'AUSENTE'}
-Multa estimada: {context.get('estimatedFine', 'Nao calculada')}
+Sanção monetária: {context.get('estimatedFine', 'Nao calculada')}
 Nivel exposicao: {context.get('exposureLevel', 'Nao avaliado')}
 
 EVIDENCIAS TECNICAS COLETADAS:
@@ -2056,11 +2023,11 @@ async def generate_gemini_response(message: str, context: Dict) -> tuple:
     Você está analisando o site: {context.get('url', 'Desconhecido')}
     
     **Métricas Atuais:**
-    - Score LGPD: {context.get('score', 0)}%
+    - Score técnico: {context.get('score', 0)}%
     - Violações: {context.get('violations', 0)}
     - CMP (Consentimento): {'Detectado' if context.get('hasConsentTool') else 'Ausente'}
     - Tags Encontradas: {len(context.get('tags', []))}
-    - Multa Estimada: {context.get('estimatedFine', 'Indisponível')}
+    - Sanção monetária: {context.get('estimatedFine', 'Indisponível')}
     - Vazamentos PII: {context.get('piiExposure', 0)}
     - Falhas Segurança: {context.get('securityIssues', 0)}
     
