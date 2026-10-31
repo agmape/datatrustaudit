@@ -57,13 +57,8 @@ export class AuthRequestError extends Error {
 const _IS_DEV = import.meta.env.DEV && !import.meta.env.PROD;
 const _DEV_ADMIN_MODE = _IS_DEV && import.meta.env.VITE_DEV_ADMIN_MODE === 'true';
 const _DEV_ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'datatrustaudit@gmail.com').toLowerCase();
-const _DEV_ADMIN_PASS = import.meta.env.VITE_DEV_ADMIN_PASSWORD || '';
-
-// Static admin passwords to try (from env or well-known dev values)
-const _DEV_ADMIN_PASSWORDS = [
-    _DEV_ADMIN_PASS,
-    import.meta.env.VITE_DEV_PASSWORD || '',
-].filter(Boolean);
+// Never read passwords from VITE_* vars: they are embedded in the public bundle.
+// The dev admin password is checked only by the backend (ADMIN_TEST_PASSWORD).
 
 if (_DEV_ADMIN_MODE && _IS_DEV) {
     console.info(
