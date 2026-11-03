@@ -15,3 +15,6 @@ __pycache__/
 var/
 db/*.db
 db/*.db-*
+
+# screenshots locais
+scratch_*.png

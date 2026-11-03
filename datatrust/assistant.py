@@ -20,6 +20,22 @@ _MONEY_RE = re.compile(r"(R\$\s?\d|US\$\s?\d|€\s?\d|\$\s?\d[\d.,]*\s*(mil|milh
 _VIOLATION_RE = re.compile(r"\b(viola(?:ção|ções|ndo|m)?\s+(?:a|da)\s+lgpd|is\s+violating|violates\s+(?:the\s+)?(?:lgpd|gdpr)|ilegal(?:mente)?|illegal(?:ly)?)\b", re.I)
 
 
+_FINDING_REF_RE = re.compile(r"\[?\b(F-\d{3,})\b\]?")
+_SOURCE_REF_RE = re.compile(r"\[S(\d+)\]")
+_TAG_ID_RE = re.compile(r"\b((?:GTM|G|AW|DC|GT)-[A-Z0-9]{4,14}|UA-\d{4,10}-\d{1,3})\b")
+
+
+def ungrounded_references(text: str, ctx: Dict[str, Any], n_sources: int) -> List[str]:
+    """Ids the answer mentions that do not exist in the report context (finding ids, tag ids, source refs)."""
+    known_findings = {f.get("id") for f in ctx.get("findings") or []}
+    known_tag_ids = {str(i) for t in ctx.get("tags") or [] for i in (t.get("ids") or [])}
+    bad = [f for f in _FINDING_REF_RE.findall(text) if f not in known_findings]
+    bad += [t for t in _TAG_ID_RE.findall(text)
+            if t not in known_tag_ids and not re.search(r"X{4,}", t)]   # placeholders in explanations
+    bad += [f"S{n}" for n in _SOURCE_REF_RE.findall(text) if not (1 <= int(n) <= n_sources)]
+    return sorted(set(bad))
+
+
 def build_context(report: Dict[str, Any]) -> Dict[str, Any]:
     findings = []
     for f in (report.get("findings") or [])[:60]:
@@ -102,7 +118,7 @@ def answer(message: str, report: Dict[str, Any], language: str = "pt-BR") -> Dic
         from google.genai import types
         client = genai.Client(api_key=api_key)
         resp = client.models.generate_content(
-            model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite"), contents=prompt,
+            model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"), contents=prompt,
             config=types.GenerateContentConfig(system_instruction=system, temperature=0.1, max_output_tokens=900))
         text = (resp.text or "").strip()
     except Exception as exc:
@@ -111,4 +127,9 @@ def answer(message: str, report: Dict[str, Any], language: str = "pt-BR") -> Dic
     if _MONEY_RE.search(text) or _VIOLATION_RE.search(text):
         return {"answer": _deterministic(message, ctx, sources, language), "grounded": True, "citations": sources,
                 "mode": "deterministic", "note": "LLM answer discarded by safety post-check (legal conclusion / monetary estimate)."}
+    unknown = ungrounded_references(text, ctx, len(sources))
+    if unknown:
+        return {"answer": _deterministic(message, ctx, sources, language), "grounded": True, "citations": sources,
+                "mode": "deterministic",
+                "note": "LLM answer discarded: it referenced ids not present in the report (" + ", ".join(unknown[:5]) + ")."}
     return {"answer": text, "grounded": True, "citations": sources, "mode": "llm"}

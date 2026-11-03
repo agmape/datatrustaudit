@@ -69,46 +69,111 @@ _EXACT_KEYS = {
     "external_id": "online_identifier", "fbp": "online_identifier", "fbc": "online_identifier",
     "user_id": "online_identifier", "userid": "online_identifier", "_gid": "online_identifier",
 }
-_SUBSTRING_KEYS: List[Tuple[str, str]] = [
-    ("password", "credential"), ("passwd", "credential"), ("senha", "credential"),
-    ("secret", "credential"), ("access_token", "credential"), ("auth_token", "credential"),
+# Key names are matched on WHOLE WORDS (snake_case, kebab-case, dot.case and camelCase are split),
+# never on raw substrings: substring matching turned "graph_id"/"phase" into phone context,
+# "company_id" into card context, "acceptCookies" into a postal code (cep) and "adobe_mc" into a
+# birth date (dob) — producing OBSERVED personal-data findings that were not real.
+# Each entry is a tuple of consecutive words; a single-word tuple matches that word exactly.
+_KEY_WORDS: List[Tuple[Tuple[str, ...], str]] = [
+    (("password",), "credential"), (("passwd",), "credential"), (("senha",), "credential"),
+    (("secret",), "credential"), (("access", "token"), "credential"), (("auth", "token"), "credential"),
+    (("accesstoken",), "credential"), (("authtoken",), "credential"),
     # NOTE: api_key / write_key are intentionally NOT credentials: browser SDKs (Amplitude, Segment,
     # Maps...) ship public client keys by design. Flagging them produced false positives on real sites.
-    ("email", "email"), ("e-mail", "email"), ("e_mail", "email"),
-    ("phone", "phone"), ("telefone", "phone"), ("celular", "phone"), ("mobile", "phone"),
-    ("whatsapp", "phone"),
-    ("cpf", "cpf"), ("document_number", "document"), ("documento", "document"), ("rg_number", "document"),
-    ("first_name", "first_name"), ("firstname", "first_name"), ("last_name", "last_name"),
-    ("lastname", "last_name"), ("full_name", "full_name"), ("fullname", "full_name"),
-    ("nome_completo", "full_name"),
-    ("birth", "birth_date"), ("nascimento", "birth_date"), ("dob", "birth_date"),
-    ("street", "address"), ("address", "address"), ("endereco", "address"), ("cep", "postal_code"),
-    ("zipcode", "postal_code"), ("zip_code", "postal_code"), ("postal", "postal_code"),
+    (("email",), "email"), (("e", "mail"), "email"), (("emailaddress",), "email"),
+    (("phone",), "phone"), (("telefone",), "phone"), (("celular",), "phone"), (("whatsapp",), "phone"),
+    (("phonenumber",), "phone"), (("mobile", "number"), "phone"), (("mobile", "phone"), "phone"),
+    (("mobilephone",), "phone"), (("tel",), "phone"), (("fone",), "phone"),
+    (("cpf",), "cpf"), (("document", "number"), "document"), (("documento",), "document"),
+    (("rg", "number"), "document"),
+    (("first", "name"), "first_name"), (("firstname",), "first_name"), (("last", "name"), "last_name"),
+    (("lastname",), "last_name"), (("full", "name"), "full_name"), (("fullname",), "full_name"),
+    (("nome", "completo"), "full_name"), (("sobrenome",), "last_name"),
+    (("birth",), "birth_date"), (("birthday",), "birth_date"), (("birthdate",), "birth_date"),
+    (("nascimento",), "birth_date"), (("dob",), "birth_date"),
+    (("street",), "address"), (("address",), "address"), (("endereco",), "address"),
+    (("logradouro",), "address"),
+    (("cep",), "postal_code"), (("zipcode",), "postal_code"), (("zip", "code"), "postal_code"),
+    (("zip",), "postal_code"), (("postal",), "postal_code"), (("postcode",), "postal_code"),
 ]
-_CONTEXT_PHONE = {"phone", "telefone", "celular", "mobile", "whatsapp", "ph", "tel"}
-_CONTEXT_CPF = {"cpf", "document", "documento", "tax_id", "taxid"}
-_CONTEXT_CARD = {"card", "cartao", "cc_number", "pan"}
+# words that turn a PII-looking key into metadata about the field, not the value itself
+# (is_mobile, phone_model, email_verified, address_type, ip_address ...)
+_META_WORDS = {"is", "has", "type", "model", "brand", "version", "os", "app", "device", "mode", "view",
+               "layout", "format", "verified", "valid", "validated", "enabled", "opt", "optin", "consent",
+               "count", "length", "status", "field", "label", "placeholder", "error", "ip", "mac", "wallet",
+               "domain", "provider"}
+_PHONE_CONTEXT_WORDS = {"phone", "telefone", "celular", "whatsapp", "tel", "fone", "ph", "phonenumber",
+                        "mobilephone"}
+_CPF_CONTEXT_WORDS = {"cpf", "documento", "taxid"}
+_CARD_WORDS = {"card", "cartao", "cc"}
+_CARD_NUMBER_WORDS = {"number", "num", "numero", "no", "pan"}
 _PLACEHOLDER_VALUES = {"", "undefined", "null", "none", "(not set)", "not set", "false", "true", "0", "[]", "{}"}
+_MAX_KEY_LEN = 64
+
+
+def _strip_key(key: Optional[str]) -> str:
+    k = str(key).strip()
+    # strip vendor wrappers like ud[em], ep.email, epn.phone
+    m = re.match(r"^(?:ud|user_data)\[(\w+)\]$", k, re.I)
+    if m:
+        k = m.group(1)
+    for prefix in ("ep.", "epn.", "up.", "upn.", "cd[", "u."):
+        if k.lower().startswith(prefix):
+            k = k[len(prefix):].rstrip("]")
+    return k
+
+
+def key_words(key: Optional[str]) -> List[str]:
+    """Split a key name into lower-case words (camelCase, snake_case, kebab-case, dots, brackets)."""
+    if not key:
+        return []
+    k = _strip_key(key)
+    if len(k) > _MAX_KEY_LEN:
+        return []   # not a field name (base64 blobs, serialized JSON used as a key ...)
+    k = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", k)
+    k = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", k)
+    return [w for w in re.split(r"[^a-z0-9]+", k.lower()) if w]
+
+
+def _has_seq(words: List[str], seq: Tuple[str, ...]) -> bool:
+    n = len(seq)
+    return any(tuple(words[i:i + n]) == seq for i in range(len(words) - n + 1))
 
 
 def key_kind(key: Optional[str]) -> Optional[str]:
     """Return the PII category suggested by a key name, or None."""
     if not key:
         return None
-    k = str(key).strip().lower()
-    # strip vendor wrappers like ud[em], ep.email, epn.phone
-    m = re.match(r"^(?:ud|user_data)\[(\w+)\]$", k)
-    if m:
-        k = m.group(1)
-    for prefix in ("ep.", "epn.", "up.", "upn.", "cd[", "u."):
-        if k.startswith(prefix):
-            k = k[len(prefix):].rstrip("]")
+    k = _strip_key(key).lower()
     if k in _EXACT_KEYS:
         return _EXACT_KEYS[k]
-    for sub, kind in _SUBSTRING_KEYS:
-        if sub in k:
+    words = key_words(key)
+    if not words:
+        return None
+    for seq, kind in _KEY_WORDS:
+        if _has_seq(words, seq):
+            if kind != "credential" and set(words) & _META_WORDS:
+                return None
             return kind
     return None
+
+
+def _phone_context(key: Optional[str]) -> bool:
+    w = set(key_words(key))
+    return key_kind(key) == "phone" or (bool(w & _PHONE_CONTEXT_WORDS) and not (w & _META_WORDS))
+
+
+def _cpf_context(key: Optional[str]) -> bool:
+    w = key_words(key)
+    return key_kind(key) in ("cpf", "document") or (
+        (bool(set(w) & _CPF_CONTEXT_WORDS) or _has_seq(w, ("tax", "id"))) and not (set(w) & _META_WORDS))
+
+
+def _card_context(key: Optional[str]) -> bool:
+    w = set(key_words(key))
+    if w & _META_WORDS:
+        return False
+    return w == {"pan"} or bool(w & _CARD_WORDS and w & _CARD_NUMBER_WORDS) or "ccnumber" in w or "cardnumber" in w
 
 
 def _cpf_valid(digits: str) -> bool:
@@ -137,17 +202,11 @@ def _luhn_valid(digits: str) -> bool:
     return total % 10 == 0
 
 
-def _context(key: Optional[str]) -> str:
-    return (str(key).lower() if key else "")
-
-
 def find_pii_spans(text: str, key: Optional[str] = None) -> List[Tuple[int, int, str]]:
     """Return (start, end, kind) spans of validated personal-data VALUES in ``text``."""
     if not text:
         return []
     spans: List[Tuple[int, int, str]] = []
-    ctx = _context(key)
-    kk = key_kind(key)
 
     for m in _EMAIL_RE.finditer(text):
         tld = m.group(2).lower()
@@ -158,12 +217,12 @@ def find_pii_spans(text: str, key: Optional[str] = None) -> List[Tuple[int, int,
     for m in _CPF_FMT_RE.finditer(text):
         if _cpf_valid(re.sub(r"\D", "", m.group(0))):
             spans.append((m.start(), m.end(), "cpf"))
-    if kk == "cpf" or any(c in ctx for c in _CONTEXT_CPF):
+    if _cpf_context(key):
         for m in _CPF_RAW_RE.finditer(text):
             if _cpf_valid(m.group(0)):
                 spans.append((m.start(), m.end(), "cpf"))
 
-    phone_ctx = kk == "phone" or any(c == ctx or c in ctx for c in _CONTEXT_PHONE)
+    phone_ctx = _phone_context(key)
     for m in _PHONE_FMT_RE.finditer(text):
         digits = re.sub(r"\D", "", m.group(0))
         if 10 <= len(digits) <= 13:
@@ -175,7 +234,7 @@ def find_pii_spans(text: str, key: Optional[str] = None) -> List[Tuple[int, int,
             if 10 <= len(m.group(0)) <= 13:
                 spans.append((m.start(), m.end(), "phone"))
 
-    card_ctx = any(c in ctx for c in _CONTEXT_CARD)
+    card_ctx = _card_context(key)
     for m in (_CARD_RE if card_ctx else _CARD_STRICT_RE).finditer(text):
         digits = re.sub(r"\D", "", m.group(0))
         if _luhn_valid(digits):
@@ -368,6 +427,19 @@ def sanitize_obj(obj: Any, location: str = "datalayer", key: Optional[str] = Non
     return sv, r, h
 
 
+_MULTIPART_PART_RE = re.compile(
+    r'Content-Disposition:\s*form-data;\s*name="([^"]*)"[^\r\n]*\r?\n(?:[^\r\n]+\r?\n)*\r?\n(.*?)\r?\n?(?=--)',
+    re.S | re.I)
+
+
+def _parse_multipart(text: str) -> Optional[List[Tuple[str, str]]]:
+    """Parse a multipart/form-data body into (name, value) pairs; None if it is not multipart."""
+    first = text.split("\n", 1)[0].strip()
+    if not first.startswith("--") or "content-disposition: form-data" not in text[:600].lower():
+        return None
+    return [(m.group(1), m.group(2)) for m in _MULTIPART_PART_RE.finditer(text + "\n--")]
+
+
 def sanitize_body(body: Optional[str], content_type: Optional[str] = None, location: str = "body"
                   ) -> Tuple[Optional[str], Redaction, List[PiiHit], List[List[Tuple[str, str]]]]:
     """
@@ -394,6 +466,23 @@ def sanitize_body(body: Optional[str], content_type: Optional[str] = None, locat
             return out, red, hits, lines_out
         except Exception:
             pass
+    mp = _parse_multipart(stripped)
+    if mp is not None:
+        # multipart/form-data (e.g. Meta Pixel POST /tr/): one event = one line of (name, value) pairs
+        pairs, q = [], []
+        for k, v in mp:
+            sk = k if len(k) <= _MAX_KEY_LEN else k[:_MAX_KEY_LEN] + "…"
+            sv, r, h = redact_value(v, k, location)
+            red.merge(r)
+            hits.extend(h)
+            pairs.append((sk, sv))
+            q.append(f"{sk}={sv}")
+        lines_out.append(pairs)
+        out = "&".join(q)
+        if len(out) > MAX_BODY_LEN:
+            out = out[:MAX_BODY_LEN] + "…"
+            red.truncated = True
+        return out, red, hits, lines_out
     if "=" in stripped and " " not in stripped.split("\n", 1)[0][:200]:
         out_lines = []
         for line in stripped.splitlines():

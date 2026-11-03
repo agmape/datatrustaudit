@@ -108,7 +108,10 @@ VENDORS: List[Vendor] = [
            docs="https://developers.google.com/tag-platform/gtagjs"),
     Vendor("ga4", "Google Analytics 4", "Google", "analytics",
            script=[r"/gtag/js\?(?:[^#]*&)?id=G-"],
-           beacon=[r"/g/collect\?(?:[^#]*&)?tid=G-", r"(?:^|[/.])(?:region\d+\.)?(?:google-analytics|analytics\.google)\.com/g/collect"],
+           beacon=[r"/g/collect\?(?:[^#]*&)?tid=G-", r"(?:^|[/.])(?:region\d+\.)?(?:google-analytics|analytics\.google)\.com/g/collect",
+                   # GA4 hits sent through a first-party path (Google tag gateway / server-side GTM),
+                   # e.g. https://www.site.com/abc123/ag/g/c?v=2&tid=G-XXXX&en=page_view
+                   r"\?v=2&(?:[^#]*&)?tid=G-[A-Z0-9]{6,12}(?:&|$)"],
            html=[r"gtag\s*\(\s*['\"]config['\"]\s*,\s*['\"]G-[A-Z0-9]{6,12}['\"]"],
            id_from=[("url", r"[?&]tid=" + _GA4_ID + r"\b", ""),
                     ("url", r"/gtag/js\?(?:[^#]*&)?id=" + _GA4_ID + r"\b", ""),

@@ -265,6 +265,9 @@ class Normalizer:
                 parsed["ids"] = ids
             if "ga4" in beacon_vendors:
                 parsed["ga4_events"] = parse_ga4_hit(params, body_lines)
+                if not third:
+                    # first-party collection endpoint (Google tag gateway / server-side GTM)
+                    parsed["ga4_endpoint"] = "first_party"
             if "meta_pixel" in beacon_vendors:
                 parsed["meta"] = parse_meta_hit(params + (body_lines[0] if body_lines else []))
             vendor_hint = (beacon_vendors or script_vendors or [None])[0]
