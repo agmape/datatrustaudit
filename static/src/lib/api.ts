@@ -22,6 +22,10 @@ export const accessToken = async (): Promise<string | null> => {
   return data.session?.access_token ?? null;
 };
 
+// Backend base URL. Empty = same origin (dev proxy, or FastAPI serving static/dist).
+// On Vercel the frontend is static and the scanner runs elsewhere: set VITE_API_URL=https://api.seudominio.com
+export const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || '').trim().replace(/\/+$/, '');
+
 export async function apiFetch<T = any>(path: string, init: RequestInit & { json?: unknown; auth?: boolean; signal?: AbortSignal } = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.json !== undefined) headers.set('Content-Type', 'application/json');
@@ -31,7 +35,7 @@ export async function apiFetch<T = any>(path: string, init: RequestInit & { json
   }
   let res: Response;
   try {
-    res = await fetch(path, { ...init, method: init.method ?? (init.json !== undefined ? 'POST' : 'GET'), headers, body: init.json !== undefined ? JSON.stringify(init.json) : init.body });
+    res = await fetch(/^https?:/i.test(path) ? path : API_BASE + path, { ...init, method: init.method ?? (init.json !== undefined ? 'POST' : 'GET'), headers, body: init.json !== undefined ? JSON.stringify(init.json) : init.body });
   } catch (e: any) {
     if (e?.name === 'AbortError') throw new ApiError(0, 'ABORTED', 'aborted');
     if (import.meta.env.DEV) console.error('[api] fetch failed', path, e);

@@ -18,3 +18,4 @@ db/*.db-*
 
 # screenshots locais
 scratch_*.png
+static/vite.config.ts.timestamp-*
