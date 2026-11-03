@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>SSRF subrequests</title></head>
+<body><h1>Tries to reach private networks from the browser</h1>
+<img src="http://10.0.0.1/pixel.gif">
+<img src="http://169.254.169.254/latest/meta-data/">
+<script>fetch('http://192.168.0.10/admin').catch(function(){});</script>
+<script>fetch('http://__OTHER_HOST__/secret').catch(function(){});</script>
+<a href="/privacy">Privacy</a></body></html>

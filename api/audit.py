@@ -1,416 +1,250 @@
+"""
+Audit API.
+
+Direction (owner decision, 28/10/2026): running an analysis requires a verified account (Free needs
+no card). Every plan sees the same collection; the plan only decides how many DETAILS are released
+(visibility 30/70/100%, applied here on the server). Monthly/daily/domain quotas are enforced here.
+
+    POST /api/audit            single-page scan
+    POST /api/audit/deep       multi-page scan (Pro/Premium/admin)
+    GET  /api/methodology      scoring weights, catalog, limitations (versioned)
+    POST /api/explain          RAG explanations for findings (optional layer, never detection)
+    POST /api/chat             assistant grounded ONLY on the confirmed report context
+"""
+from __future__ import annotations
+
 import asyncio
-import ipaddress
-import re
-import socket
+import logging
+import os
+import threading
+import time
+import uuid
+from collections import defaultdict, deque
+from typing import Any, Deque, Dict, List
 
-from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
-
-from fastapi import APIRouter
-
-
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from datatrust import ENGINE_VERSION, accounts, repository
+from datatrust.auth import Principal, get_principal
+from datatrust.catalog import CATEGORIES, VENDORS
+from datatrust.db import get_session
+from datatrust.i18n import localize_report
+from datatrust.i18n.rulebook import normalize_lang
+from datatrust.pipeline import BASE_LIMITATIONS, DISCLAIMER, ScanOptions, run_scan
+from datatrust.plans import ANON, entitlements  # noqa: F401
+from datatrust.visibility import apply_visibility
+from datatrust.scoring import DEFINED_CHECKS, MIN_GLOBAL_COVERAGE, SCORING_VERSION, WEIGHTS
+
+log = logging.getLogger("datatrust.api")
+router = APIRouter(prefix="/api", tags=["Audit"])
+
+MAX_CONCURRENT = int(os.getenv("DATATRUST_MAX_CONCURRENT_SCANS", "2"))
+RATE_LIMIT = int(os.getenv("DATATRUST_RATE_LIMIT_SCANS", "12"))          # anonymous scans per window per client IP
+RATE_WINDOW_S = int(os.getenv("DATATRUST_RATE_WINDOW_S", "600"))
+DEEP_MAX_PAGES = int(os.getenv("DATATRUST_DEEP_MAX_PAGES", "10"))
+
+_sem = threading.BoundedSemaphore(MAX_CONCURRENT)
+_hits: Dict[str, Deque[float]] = defaultdict(deque)
+_hits_lock = threading.Lock()
 
 
-from audit_engine.browser_fetcher import browser_scan
-from audit_engine.url_security import UnsafeURLError, validate_public_url
-from audit_engine.orchestrator import run_audit
-from audit_engine.credit_rules import get_evidence_count
+def _client_ip(request: Request) -> str:
+    if os.getenv("DATATRUST_TRUST_PROXY", "0") == "1":
+        xff = request.headers.get("x-forwarded-for", "")
+        if xff:
+            return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
-
-
-router = APIRouter(prefix="/api/audit", tags=["Audit"])
-
-
-# ── Timeouts ────────────────────────────────────────────────────────────────
-# Browser Playwright timeout: 60s — domcontentloaded + 10s networkidle2 cap
-# Outer asyncio.wait_for guard: 90s — dá 30s de margem para setup/teardown
-FETCH_TIMEOUT_MS   = 60_000   # ms → passado para browser_scan
-OUTER_TIMEOUT_S    = 90.0     # segundos para asyncio.wait_for
+def _rate_limited(ip: str) -> bool:
+    now = time.time()
+    with _hits_lock:
+        q = _hits[ip]
+        while q and now - q[0] > RATE_WINDOW_S:
+            q.popleft()
+        if len(q) >= RATE_LIMIT:
+            return True
+        q.append(now)
+        return False
 
 
 class AuditRequest(BaseModel):
-    url: str
-    view_source: Optional[bool] = True
-
-def _friendly_message(code: str) -> str:
-    messages = {
-        "INVALID_URL": "Please enter a valid website URL.",
-        "FETCH_FAILED": "We could not access this website. Please check the URL and try again.",
-        "BLOCKED": "The website may have blocked the scan. Basic or partial results are shown when available.",
-        "TIMEOUT": "The website took too long to respond. Please try again.",
-        "PROTOCOL_ERROR": "The runtime scan was interrupted by a protocol failure. No confirmed runtime findings were generated.",
-        "DNS_FAILURE": "Could not resolve the website domain. Please check the URL.",
-    }
-    return messages.get(code, messages["FETCH_FAILED"])
+    url: str = Field(..., max_length=2048)
+    consent_phases: bool = True
+    explain: bool = False
+    language: str = "pt-BR"
 
 
-def normalize_url(raw_url: str) -> str:
-    """Validate a user-supplied scan target and reject SSRF/private-network targets."""
+class DeepAuditRequest(AuditRequest):
+    max_pages: int = Field(5, ge=1, le=10)
+
+
+def _error(status: int, code: str, message: str, **extra) -> JSONResponse:
+    body = {"success": False, "status": "failed", "error_code": code, "message": message,
+            "tags": [], "findings": [], "evidence": [], "cookies": [], "storage": [],
+            "scores": {"overall": {"score": None, "null_reason": message}, "axes": {}}}
+    body.update(extra)
+    return JSONResponse(body, status_code=status)
+
+
+def _fmt_local(dt) -> str:
+    return dt.astimezone(accounts.TZ).strftime("%d/%m/%Y %H:%M") if dt else "-"
+
+
+def _quota_message(q: "accounts.QuotaExceeded", plan_name: str, lang: str) -> str:
+    when = _fmt_local(q.renews_at)
+    if lang == "pt-BR":
+        msg = {"monthly": f"Você usou as {q.limit} análises do mês no plano {plan_name}. Renova em {when} (horário de Brasília).",
+               "daily": f"O plano {plan_name} permite {q.limit} análise por dia. Próxima liberação em {when} (horário de Brasília).",
+               "domains": f"O plano {plan_name} permite {q.limit} domínio(s) distinto(s) por período. Você já usou {q.used}. "
+                          f"Analise um domínio já usado ou aguarde a renovação em {when}."}[q.kind]
+        return msg + (" (Saldo de teste simulado como esgotado.)" if q.simulated else "")
+    msg = {"monthly": f"You used all {q.limit} monthly analyses of the {plan_name} plan. Renews at {when} (Brasília time).",
+           "daily": f"The {plan_name} plan allows {q.limit} analysis per day. Next one available at {when} (Brasília time).",
+           "domains": f"The {plan_name} plan allows {q.limit} distinct domain(s) per period. You already used {q.used}. "
+                      f"Analyse a domain already used or wait for the renewal at {when}."}[q.kind]
+    return msg + (" (Test balance simulated as exhausted.)" if q.simulated else "")
+
+
+def present(report: Dict[str, Any], lang: str, plan: str) -> Dict[str, Any]:
+    """Localize, then apply the plan visibility ON THE SERVER (withheld records never leave)."""
+    return apply_visibility(localize_report(report, lang), plan, lang)
+
+
+async def _execute(request: Request, url: str, opts: ScanOptions, mode: str, language: str,
+                   principal: Principal, db: Session) -> JSONResponse:
+    lang = normalize_lang(language)
+    pt = lang == "pt-BR"
+
+    # ── access rules (server side) ──────────────────────────────────────────
+    if principal.anonymous:
+        return _error(401, "AUTH_REQUIRED",
+                      "Crie uma conta grátis (sem cartão) ou entre para executar análises." if pt
+                      else "Create a free account (no card) or sign in to run analyses.")
+    ent = entitlements(principal.plan)
+    if ent["requires_verified_account"] and not principal.email_verified:
+        return _error(403, "EMAIL_NOT_VERIFIED", "Confirme seu e-mail para executar análises." if pt
+                      else "Confirm your e-mail to run analyses.")
+    if mode == "deep" and not ent["deep_scan"]:
+        return _error(403, "PLAN_FEATURE_UNAVAILABLE",
+                      "A varredura de várias páginas exige o plano Pro ou Premium." if pt
+                      else "The multi-page scan requires the Pro or Premium plan.",
+                      feature="deep_scan", plan=principal.plan, required_plan="pro")
+    if mode == "deep":
+        opts.max_pages = max(1, min(opts.max_pages, ent["max_deep_pages"], DEEP_MAX_PAGES))
+
+    audit_id = str(uuid.uuid4())
+    ctx = principal.ctx or accounts.resolve_context(db, principal.profile)
     try:
-        return validate_public_url(raw_url)
-    except UnsafeURLError as exc:
-        raise ValueError("INVALID_URL") from exc
+        accounts.reserve_credit(db, principal.profile, ctx, audit_id, url)
+    except accounts.QuotaExceeded as q:
+        snap = accounts.quota_snapshot(db, principal.profile, ctx)
+        return _error(429, {"monthly": "QUOTA_EXCEEDED", "daily": "DAILY_LIMIT", "domains": "DOMAIN_LIMIT"}[q.kind],
+                      _quota_message(q, ent["plan_name"], lang), quota=snap, quota_kind=q.kind,
+                      renews_at=q.renews_at.isoformat() if q.renews_at else None, test_context=principal.test)
+    repository.begin_audit(db, audit_id, principal.user_id, url, mode, principal.plan, lang, is_test=principal.simulated)
 
-
-def _safe_dict(value: Any) -> Any:
-    if value is None:
-        return None
-    if is_dataclass(value):
-        if hasattr(value, "to_dict"):
-            return value.to_dict()
-        return {k: _safe_dict(v) for k, v in asdict(value).items()}
-    if isinstance(value, list):
-        return [_safe_dict(item) for item in value]
-    if isinstance(value, tuple):
-        return [_safe_dict(item) for item in value]
-    if isinstance(value, dict):
-        return {k: _safe_dict(v) for k, v in value.items()}
-    if hasattr(value, "to_dict"):
-        return value.to_dict()
-    return value
-
-
-def _dedupe_strings(values: List[str]) -> List[str]:
-    seen = set()
-    out = []
-    for value in values:
-        if value and value not in seen:
-            seen.add(value)
-            out.append(value)
-    return out
-
-
-def _risk_from_privacy(privacy: Dict[str, Any], law: str) -> Optional[str]:
-    if not privacy:
-        return None
-    violations = privacy.get("violations") or []
-    if any(v.get("severity") == "critical" for v in violations if isinstance(v, dict)):
-        return "critical"
-    if any(v.get("severity") == "high" for v in violations if isinstance(v, dict)):
-        return "high"
-    if violations:
-        return "medium"
-    if law and privacy.get("hasConsentTool") is False:
-        return "needs_manual_verification"
-    return "low"
-
-
-def _issue_from_recommendation(rec: Dict[str, Any], locked: bool = False) -> Dict[str, Any]:
-    severity = rec.get("severity") or rec.get("priority") or "info"
-    return {
-        "severity": severity if severity in {"critical", "high", "medium", "low", "info"} else "info",
-        "title": rec.get("title") or rec.get("category") or "Audit recommendation",
-        "description": rec.get("detail") or rec.get("description") or "",
-        "impact": rec.get("impact") or "May affect analytics data quality, privacy compliance, or debugging reliability.",
-        "howToFix": rec.get("fix") or rec.get("recommendation") or "Review the implementation in GTM, GA4, CMP, and site source.",
-        "confidence": rec.get("confidence") or "medium",
-        "accessRequirement": null,
-    }
-
-
-def _build_debugging(scan: Any, audit: Dict[str, Any]) -> Dict[str, Any]:
-    datalayer = audit.get("datalayer_findings") or audit.get("datalayerFindings") or []
-    scripts = getattr(scan, "all_script_urls", []) or []
-    network = getattr(scan, "intercepted_requests", []) or []
-    network_hints = []
-    for req in network[:50]:
-        req_dict = _safe_dict(req) if req else {}
-        network_hints.append({
-            "url": req_dict.get("url"),
-            "domain": req_dict.get("domain"),
-            "resourceType": req_dict.get("resource_type") or req_dict.get("resourceType"),
-            "status": "detected",
-            "verification": "Detected from browser/network scan" if not getattr(scan, "fallback_used", False) else "Unavailable in static scan",
-        })
-
-    return {
-        "scriptsInspected": scripts[:100],
-        "dataLayerPushes": datalayer if isinstance(datalayer, list) else [],
-        "javascriptErrors": [],
-        "networkHints": network_hints,
-        "spaBehaviorHints": [
-            {
-                "status": "needs_manual_verification",
-                "message": "Single-page app route changes and authenticated flows may require manual verification or a deeper multi-page scan.",
-            }
-        ],
-    }
-
-
-def _normalize_audit_response(url: str, scan: Any, audit_result: Any) -> Dict[str, Any]:
-    audit = _safe_dict(audit_result) or {}
-    tags = audit.get("tags") or []
-    events = audit.get("events") or {}
-    privacy = audit.get("privacy") or {}
-    consent = audit.get("consent") or {}
-    gtm_quality = audit.get("gtm_quality") or audit.get("gtmQuality") or {}
-    scores = audit.get("scores") or {}
-    recommendations = audit.get("recommendations") or []
-    duplicates = audit.get("duplicates") or []
-    datalayer = audit.get("datalayer_findings") or audit.get("datalayerFindings") or []
-    # New privacy engine fields
-    personal_data_findings_raw = []
-    sensitive_data_findings_raw = []
-    regulatory_exposure_raw = None
+    acquired = await asyncio.to_thread(_sem.acquire, True, 45)
+    if not acquired:
+        accounts.finalize_credit(db, audit_id, "failed", False, "busy")
+        repository.fail_audit(db, audit_id, "failed", "BUSY")
+        return _error(503, "BUSY", "O scanner está ocupado. Tente novamente em um minuto." if pt
+                      else "The scanner is busy. Please try again in a minute.")
+    report: Dict[str, Any] = {}
     try:
-        _pdf = getattr(audit_result, "personal_data_findings", None)
-        if _pdf:
-            personal_data_findings_raw = [f.to_dict() if hasattr(f, "to_dict") else f for f in _pdf]
-        _sdf = getattr(audit_result, "sensitive_data_findings", None)
-        if _sdf:
-            sensitive_data_findings_raw = [f.to_dict() if hasattr(f, "to_dict") else f for f in _sdf]
-        regulatory_exposure_raw = getattr(audit_result, "regulatory_exposure", None)
-    except Exception:
-        pass
-
-    ga4_ids = _dedupe_strings([
-        tag.get("tagId") for tag in tags
-        if isinstance(tag, dict) and (tag.get("id") == "ga4" or tag.get("type") == "analytics")
-        and isinstance(tag.get("tagId"), str) and tag.get("tagId", "").startswith("G-")
-    ])
-    gtm_ids = _dedupe_strings([
-        tag.get("tagId") for tag in tags
-        if isinstance(tag, dict) and (tag.get("id") == "gtm" or tag.get("type") == "tag_manager")
-        and isinstance(tag.get("tagId"), str) and tag.get("tagId", "").startswith("GTM-")
-    ] + (gtm_quality.get("containers") or []))
-
-    event_items = events.get("events") if isinstance(events, dict) else []
-    privacy_violations = privacy.get("violations") if isinstance(privacy, dict) else []
-    issue_items = [_issue_from_recommendation(rec) for rec in recommendations if isinstance(rec, dict)]
-
-    score = scores.get("auditScore") or scores.get("overall") or audit.get("score")
-    score_available = score is not None
-    normalized_score = int(max(0, min(100, score))) if score_available else None
-
-    # Cookie names must come from browser evidence, never from vendor assumptions.
-    observed_cookies = sorted(list((getattr(scan, "cookies", {}) or {}).keys()))
-
-    visible_tags = tags
-
-    response = {
-        "success": True,
-        "status": "completed" if not getattr(scan, "error", None) else "partial",
-        "access": "full",
-        "url": url,
-        "score": normalized_score,
-        "scoreAvailable": score_available,
-        "summary": {
-            "totalTags": len(tags),
-            "totalEvents": events.get("totalEvents", len(event_items)) if isinstance(events, dict) else len(event_items or []),
-            "totalViolations": privacy.get("totalViolations", len(privacy_violations or [])) if isinstance(privacy, dict) else 0,
-            "totalRecommendations": len(recommendations),
-            "consentDetected": bool(consent.get("cmpDetected") or privacy.get("hasConsentTool")) if isinstance(consent, dict) else False,
-            "hasUniversalAnalytics": bool(privacy.get("hasUniversalAnalytics")) if isinstance(privacy, dict) else False,
-            "violationsCount": privacy.get("totalViolations", len(privacy_violations or [])) if isinstance(privacy, dict) else 0,
-            "estimatedFine": privacy.get("estimatedRiskExposure") if isinstance(privacy, dict) else None,
-            "eventsDetected": events.get("totalEvents", len(event_items)) if isinstance(events, dict) else len(event_items or []),
-            "duplicatesDetected": len(duplicates),
-            "piiExposureCount": len(personal_data_findings_raw),
-            "sensitiveDataCount": len(sensitive_data_findings_raw),
-            "securityIssuesCount": 0,
-        },
-        "tags": visible_tags,
-        "events": event_items or [],
-        "violations": privacy_violations or [],
-        "recommendations": issue_items,
-        "privacy": {
-            "jurisdiction": privacy.get("jurisdiction") if isinstance(privacy, dict) else "Unknown",
-            "framework": privacy.get("framework") or privacy.get("law_full") if isinstance(privacy, dict) else "General Privacy",
-            "confidenceLevel": privacy.get("confidenceLevel") if isinstance(privacy, dict) else "Static scan confidence only",
-            "violations": privacy_violations or [],
-            "totalViolations": privacy.get("totalViolations", len(privacy_violations or [])) if isinstance(privacy, dict) else 0,
-            "hasConsentTool": bool(consent.get("cmpDetected") or privacy.get("hasConsentTool")) if isinstance(consent, dict) else False,
-            "hasUniversalAnalytics": bool(privacy.get("hasUniversalAnalytics")) if isinstance(privacy, dict) else False,
-            "estimatedRiskExposure": privacy.get("estimatedRiskExposure") if isinstance(privacy, dict) else None,
-            "complianceScore": privacy.get("complianceScore") if isinstance(privacy, dict) else None,
-            "scoreBasis": privacy.get("scoreBasis") if isinstance(privacy, dict) else None,
-            "scoreDeductions": privacy.get("scoreDeductions", []) if isinstance(privacy, dict) else [],
-            "gdprRisk": _risk_from_privacy(privacy, "GDPR"),
-            "lgpdRisk": _risk_from_privacy(privacy, "LGPD"),
-            "cookieConsentDetected": bool(consent.get("cmpDetected")) if isinstance(consent, dict) else None,
-            "cmpDetected": bool(consent.get("cmpDetected") or privacy.get("hasConsentTool")) if isinstance(consent, dict) else None,
-            "cmpName": consent.get("cmpName") if isinstance(consent, dict) else None,
-            "consentModeDetected": bool(consent.get("consentModeV2")) if isinstance(consent, dict) else None,
-            "tagsBeforeConsent": consent.get("tagsBeforeConsent", []) if isinstance(consent, dict) else [],
-            "observedCookies": observed_cookies,
-            "cookieObservationNote": (
-                "Cookie names are reported only when observed in the browser context. "
-                "The scanner does not infer cookie presence from a vendor tag."
-            ),
-            "manualVerification": [
-                "Data retention, GA4 reporting identity, custom dimensions, server-side tagging, and authenticated funnels need manual verification.",
-            ],
-        },
-        "ga4": {
-            "detected": bool(ga4_ids),
-            "measurementIds": ga4_ids,
-            "events": event_items or [],
-            "parameters": [],
-            "keyEvents": [],
-            "issues": [],
-            "manualVerification": [
-                "DebugView readiness, key events, attribution reports, and GA4 retention are unavailable in static scans.",
-            ],
-        },
-        "gtm": {
-            "detected": bool(gtm_ids),
-            "containerIds": gtm_ids,
-            "tags": visible_tags,
-            "triggers": [],
-            "variables": [],
-            "issues": gtm_quality.get("findings", []) if isinstance(gtm_quality, dict) else [],
-            "manualVerification": [
-                "GTM triggers, variables, and unpublished workspace configuration require container export or authenticated access.",
-            ],
-        },
-        "debugging": _build_debugging(scan, audit),
-        "errors": ([{"code": "PARTIAL_SCAN", "message": str(getattr(scan, "error", ""))}] if getattr(scan, "error", None) else []),
-        "scanMethod": audit.get("scan_method") or getattr(scan, "scan_method", "html_fallback"),
-        "dataQualityNotes": audit.get("data_quality_notes") or audit.get("dataQualityNotes") or [],
-        "duplicates": duplicates,
-        "gtmQuality": gtm_quality,
-        "consent": consent,
-        "datalayerFindings": datalayer,
-        "scores": scores,
-        "disclaimer": audit.get("disclaimer"),
-        # New privacy engine
-        "personalDataFindings": personal_data_findings_raw,
-        "sensitiveDataFindings": sensitive_data_findings_raw,
-        "regulatoryExposure": regulatory_exposure_raw,
-        # Scan metadata
-        "scan_id": __import__("uuid").uuid4().hex,
-        "observability": {
-            "scan_method": audit.get("scan_method") or getattr(scan, "scan_method", "html_fallback"),
-            "browser_success": not bool(getattr(scan, "fallback_used", False)),
-            "static_fallback": bool(getattr(scan, "static_fallback_attempted", False) or getattr(scan, "fallback_used", False)),
-            "pages_scanned": 1,
-            "requests_intercepted": len(getattr(scan, "intercepted_requests", []) or []),
-            "scripts_detected": len(getattr(scan, "all_script_urls", []) or []),
-            "findings_count": (
-                len(tags) + len(privacy_violations or []) + len(personal_data_findings_raw)
-                + len(sensitive_data_findings_raw) + len(recommendations)
-            ),
-            "errors": list(getattr(scan, "errors", []) or []) + ([str(getattr(scan, "error", ""))] if getattr(scan, "error", None) else []),
-            "warnings": list(getattr(scan, "warnings", []) or []),
-            "duration_ms": getattr(scan, "load_time_ms", None),
-            "started_at": getattr(scan, "started_at", None),
-            "finished_at": getattr(scan, "finished_at", None),
-        },
-        "scan_status": getattr(scan, "scan_status", "completed") if not getattr(scan, "error", None) else getattr(scan, "scan_status", "partial"),
-        "failure_reason": getattr(scan, "failure_reason", None),
-        "browser_attempts": getattr(scan, "browser_attempts", 1),
-        "static_fallback_used": getattr(scan, "static_fallback_attempted", False) or getattr(scan, "fallback_used", False),
-        "final_url": getattr(scan, "final_url", None),
-        "started_at": getattr(scan, "started_at", None),
-        "finished_at": getattr(scan, "finished_at", None),
-        "warnings": getattr(scan, "warnings", []),
-    }
-
-    # Determine credit consumption
-    response["evidence_count"] = get_evidence_count(response)
-
-    return response
-
-
-def _failed_response(code: str, errors: Optional[List[Dict[str, Any]]] = None, status_code: int = 200) -> JSONResponse:
-    return JSONResponse(
-        {
-            "success": False,
-            "status": "failed",
-            "errorCode": code,
-            "message": _friendly_message(code),
-            "errors": errors or [],
-        },
-        status_code=status_code,
-    )
-
-
-@router.post("")
-@router.post("/")
-async def run_direct_audit(payload: AuditRequest):
-    # ── 1. Valida e sanitiza URL ─────────────────────────────────────────────
-    try:
-        url = normalize_url(payload.url)
-    except ValueError:
-        return _failed_response("INVALID_URL", status_code=400)
-
-    # ── 2. Public full-access mode ───────────────────────────────────────────
-    # No login, subscription, quota, plan or database persistence is required.
-
-    # ── 3. Browser scan with graceful degradation ─────────────────────────────
-    scan = None
-    try:
-        scan = await asyncio.wait_for(
-            asyncio.to_thread(browser_scan, url, FETCH_TIMEOUT_MS),
-            timeout=OUTER_TIMEOUT_S,
-        )
+        report = await asyncio.wait_for(asyncio.to_thread(run_scan, url, opts, scan_id=audit_id),
+                                        timeout=opts.total_budget_s + 90)
     except asyncio.TimeoutError:
-        # Outer guard expirou (90s) — sem dados do browser, tenta fallback estático
-        print(f"[api/audit] asyncio.TimeoutError para {url} — tentando fallback estático")
-        try:
-            from audit_engine.browser_fetcher import _static_fallback
-            scan = _static_fallback(url, error="Outer asyncio timeout (90s)")
-            scan.partial_scan = True
-            scan.scan_status = "partial"
-            scan.failure_reason = "outer_timeout_static_fallback"
-            scan.warnings = scan.warnings or []
-            scan.warnings.append(
-                "O site demorou mais de 90s. Resultados baseados em fallback estático (sem JS/runtime)."
-            )
-        except Exception as fb_exc:
-            return _failed_response("TIMEOUT", [{
-                "message": f"Timeout de 90s e fallback estático também falhou: {fb_exc}"
-            }])
-
-    except UnsafeURLError as exc:
-        return _failed_response("INVALID_URL", [{"message": str(exc)}], status_code=400)
-    except (socket.gaierror, OSError) as exc:
-        return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
+        accounts.finalize_credit(db, audit_id, "timeout", False, "timeout")
+        repository.fail_audit(db, audit_id, "timed_out", "TIMEOUT")
+        return _error(504, "TIMEOUT", "A auditoria excedeu o tempo máximo. Nenhum resultado é informado." if pt
+                      else "The scan exceeded the maximum time budget. No result is reported.")
     except Exception as exc:
-        return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
+        log.exception("scan crashed")
+        accounts.finalize_credit(db, audit_id, "failed", False, "crash")
+        repository.fail_audit(db, audit_id, "failed", "SCAN_ERROR")
+        return _error(500, "SCAN_ERROR", f"Erro interno do scanner ({exc.__class__.__name__}). Nenhum resultado é informado."
+                      if pt else f"Internal scanner error ({exc.__class__.__name__}). No result is reported.")
+    finally:
+        _sem.release()
 
-    # ── 4. Motor de auditoria ─────────────────────────────────────────────────
+    runtime = bool((report.get("capabilities") or {}).get("runtime_js"))
+    repository.finish_audit(db, audit_id, report)
+    state = accounts.finalize_credit(db, audit_id, report.get("status", "failed") if report.get("success") else "failed", runtime)
+    quota = accounts.quota_snapshot(db, principal.profile, ctx)
+    quota["credit_state"] = state
+    out = present(report, lang, principal.plan)
+    out["audit_id"] = audit_id
+    out["plan"] = principal.plan
+    out["simulated_plan"] = principal.simulated
+    out["test_context"] = principal.test
+    out["persisted"] = bool(report.get("success"))
+    out["quota"] = quota
+    code = 200
+    if not report.get("success"):
+        code = {"INVALID_URL": 400, "BLOCKED_TARGET": 400, "DNS_FAILURE": 422}.get(report.get("error_code"), 200)
+    return JSONResponse(out, status_code=code)
+
+
+@router.post("/audit")
+@router.post("/audit/")
+async def audit(payload: AuditRequest, request: Request, principal: Principal = Depends(get_principal),
+                db: Session = Depends(get_session)):
+    opts = ScanOptions(deep=False, consent_phases=payload.consent_phases, explain=payload.explain)
+    return await _execute(request, payload.url, opts, "single", payload.language, principal, db)
+
+
+@router.post("/audit/deep")
+async def audit_deep(payload: DeepAuditRequest, request: Request, principal: Principal = Depends(get_principal),
+                     db: Session = Depends(get_session)):
+    opts = ScanOptions(deep=True, max_pages=payload.max_pages, consent_phases=payload.consent_phases,
+                       explain=payload.explain, total_budget_s=280.0)
+    return await _execute(request, payload.url, opts, "deep", payload.language, principal, db)
+
+
+@router.get("/methodology")
+async def methodology():
+    return {
+        "engine_version": ENGINE_VERSION, "scoring_version": SCORING_VERSION, "weights": WEIGHTS,
+        "min_global_coverage": MIN_GLOBAL_COVERAGE, "defined_checks": DEFINED_CHECKS,
+        "finding_statuses": {
+            "OBSERVED": "Directly supported by evidence collected in this scan.",
+            "INFERRED": "Derived by a rule from evidence; not directly observed.",
+            "NOT_OBSERVED": "Looked for with the capability available and not found during the observation window.",
+            "UNVERIFIABLE": "Could not be checked in this scan.",
+        },
+        "catalog": [{"id": v.id, "name": v.name, "company": v.company, "category": v.category,
+                     "category_label": CATEGORIES.get(v.category), "has_collection_endpoint_signature": bool(v.beacon),
+                     "docs": v.docs} for v in VENDORS],
+        "limitations": BASE_LIMITATIONS, "disclaimer": DISCLAIMER,
+    }
+
+
+class ExplainRequest(BaseModel):
+    findings: List[Dict[str, Any]] = Field(default_factory=list, max_length=200)
+    language: str = "pt-BR"
+
+
+@router.post("/explain")
+async def explain(payload: ExplainRequest):
     try:
-        audit_result = run_audit(url, scan, use_view_source=True)
-        response = _normalize_audit_response(url, scan, audit_result)
-
-        # ── 5. Enriquece resposta com flags de scan parcial ──────────────────
-        is_partial = getattr(scan, "partial_scan", False)
-        if is_partial:
-            response["partial_scan"] = True
-            response["status"] = "partial"
-            response["success"] = True   # parcial ≠ falha — frontend deve renderizar o que tiver
-
-        scan_status = getattr(scan, "scan_status", "completed")
-        if not getattr(scan, "html", ""):
-            # Sem HTML mas pode ter dados de rede — verifica se vale a pena retornar parcial
-            has_network_evidence = bool(getattr(scan, "intercepted_requests", []))
-            if is_partial and has_network_evidence:
-                # Tem evidências forenses mesmo sem HTML — retorna partial
-                response["success"] = True
-                response["status"] = "partial"
-                response["partial_scan"] = True
-            else:
-                response["success"] = False
-                response["status"] = scan_status if scan_status != "completed" else "failed"
-                if scan_status == "protocol_error":
-                    response["errorCode"] = "PROTOCOL_ERROR"
-                    response["message"] = _friendly_message("PROTOCOL_ERROR")
-                elif scan_status == "blocked":
-                    response["errorCode"] = "BLOCKED"
-                    response["message"] = _friendly_message("BLOCKED")
-                elif scan_status in ("timeout", "partial"):
-                    response["errorCode"] = "TIMEOUT"
-                    response["message"] = _friendly_message("TIMEOUT")
-                else:
-                    response["errorCode"] = "FETCH_FAILED"
-                    response["message"] = _friendly_message("FETCH_FAILED")
-        return JSONResponse(response)
-
+        from datatrust.rag import explain_findings
+        return explain_findings(payload.findings, language=payload.language)
     except Exception as exc:
-        print(f"[api/audit] Erro no motor de auditoria: {exc}")
-        return _failed_response("FETCH_FAILED", [{"message": str(exc)}])
+        return {"available": False, "reason": f"Explanations unavailable ({exc.__class__.__name__}). "
+                                              "The audit itself is unaffected.", "explanations": {}}
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., max_length=2000)
+    report: Dict[str, Any] = Field(default_factory=dict)
+    language: str = "pt-BR"
+
+
+@router.post("/chat")
+async def chat(payload: ChatRequest):
+    from datatrust.assistant import answer
+    return await asyncio.to_thread(answer, payload.message, payload.report, payload.language)

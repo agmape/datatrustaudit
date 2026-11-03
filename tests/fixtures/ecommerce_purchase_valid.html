@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Purchase valid</title>
+<script src="/_hit.js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  dataLayer.push({ ecommerce: null });
+  dataLayer.push({ event: 'purchase', ecommerce: {
+    transaction_id: 'T-1001', value: 59.9, currency: 'BRL',
+    items: [{ item_id: 'SKU-1', item_name: 'Camiseta', price: 59.9, quantity: 1 }] } });
+  window.addEventListener('load', function () {
+    __dt.ga4('G-ECOMOK1234', 'purchase',
+      '&cu=BRL&ep.transaction_id=T-1001&epn.value=59.9&pr1=' + encodeURIComponent('idSKU-1~nmCamiseta~pr59.9~qt1'));
+  });
+</script>
+</head><body><h1>Obrigado pela compra</h1><a href="/privacy">Privacy</a></body></html>

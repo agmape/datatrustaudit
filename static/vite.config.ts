@@ -4,40 +4,17 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
+const API_TARGET = process.env.DT_API_TARGET || "http://127.0.0.1:8000";
+
 export default defineConfig(({ mode }) => ({
   envDir: '..',
   server: {
     host: "::",
     port: 8080,
     proxy: {
-      "/api": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/analyze": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/chat": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/deep-analyze": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/history": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/upload": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
-      "/health": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
+      // the only backend surface: canonical audit API + health
+      "/api": { target: API_TARGET, changeOrigin: true, timeout: 600000, proxyTimeout: 600000 },
+      "/health": { target: API_TARGET, changeOrigin: true },
     },
   },
   plugins: [

@@ -1,0 +1,107 @@
+{
+  "_doc": "Golden expectations for controlled fixtures. tags_exact = exact set of vendor ids; rules_present/absent = finding rule_ids. Ground truth is defined by what each fixture page actually does (see tests/fixtures).",
+  "clean_no_tracking.html": {
+    "tags_exact": [],
+    "events_exact": [],
+    "rules_present": ["CMP_NOT_OBSERVED"],
+    "rules_absent": ["TRACKING_WITHOUT_OBSERVED_CMP", "PLACEHOLDER_TAG_ID", "POLICY_LINK_NOT_OBSERVED",
+                     "PII_VALUE_SENT_TO_THIRD_PARTY", "PII_KEY_PATTERN", "EVENT_CODE_CANDIDATES_NOT_FIRED"],
+    "overall_score_null": true
+  },
+  "ga4_basic.html": {
+    "tags_exact": ["ga4", "google_tag"],
+    "ids": {"ga4": ["G-TEST12345"]},
+    "firing": {"ga4": true},
+    "events_sent": ["page_view"],
+    "rules_present": ["TRACKING_WITHOUT_OBSERVED_CMP", "CMP_NOT_OBSERVED"],
+    "rules_absent": ["TRACKING_BEFORE_CONSENT_INTERACTION", "GA4_DUPLICATE_PAGE_VIEW"],
+    "severity": {"TRACKING_WITHOUT_OBSERVED_CMP": "needs_manual_review"}
+  },
+  "gtm_basic.html": {
+    "tags_exact": ["gtm"],
+    "ids": {"gtm": ["GTM-ABC1234"]},
+    "rules_absent": ["GTM_CONTAINER_LOADED_MULTIPLE_TIMES", "GTM_SNIPPET_REPEATED_IN_SOURCE", "TRACKING_WITHOUT_OBSERVED_CMP"]
+  },
+  "meta_pixel.html": {
+    "tags_exact": ["meta_pixel"],
+    "ids": {"meta_pixel": ["123456789012345"]},
+    "firing": {"meta_pixel": true},
+    "events_present": ["meta:PageView"],
+    "rules_absent": ["META_PIXEL_DUPLICATE_INIT", "META_PIXEL_DUPLICATE_PAGEVIEW"]
+  },
+  "gtm_ga4.html": {
+    "tags_exact": ["gtm", "ga4"],
+    "ids": {"gtm": ["GTM-GA4TEST"], "ga4": ["G-GTMGA4XYZ1"]},
+    "firing": {"ga4": true},
+    "events_sent": ["page_view"]
+  },
+  "consent_mode_v2_correct.html": {
+    "tags_exact": ["ga4", "google_tag"],
+    "rules_present": ["CONSENT_MODE_DENIED_PINGS"],
+    "rules_absent": ["CONSENT_MODE_DEFAULT_AFTER_TAG", "CONSENT_MODE_V2_SIGNALS_MISSING", "CONSENT_MODE_NOT_OBSERVED",
+                     "TRACKING_WITHOUT_OBSERVED_CMP", "CONSENT_MODE_DEFAULT_GRANTED"],
+    "consent_mode_v2": true
+  },
+  "consent_mode_v2_wrong_order.html": {
+    "tags_exact": ["ga4", "google_tag"],
+    "rules_present": ["CONSENT_MODE_DEFAULT_AFTER_TAG", "CONSENT_MODE_V2_SIGNALS_MISSING"],
+    "consent_mode_v2": false
+  },
+  "cookiebot.html": {
+    "consent": true,
+    "tags_exact": ["cookiebot", "ga4"],
+    "interactions": {"reject": "performed", "accept": "performed"},
+    "rules_present": ["NO_TRACKING_OBSERVED_AFTER_REJECT", "TRACKING_AFTER_ACCEPT"],
+    "rules_absent": ["TRACKING_BEFORE_CONSENT_INTERACTION", "TRACKING_AFTER_REJECT", "TRACKING_COOKIES_SET_AFTER_REJECT",
+                     "CMP_NOT_OBSERVED", "TRACKING_WITHOUT_OBSERVED_CMP"],
+    "status": {"TRACKING_AFTER_ACCEPT": "OBSERVED"},
+    "cookie_phases": {"_ga": ["accept:end"]}
+  },
+  "onetrust.html": {
+    "consent": true,
+    "tags_exact": ["onetrust", "meta_pixel", "ga4"],
+    "interactions": {"reject": "performed", "accept": "performed"},
+    "rules_present": ["TRACKING_BEFORE_CONSENT_INTERACTION", "TRACKING_AFTER_REJECT", "TRACKING_COOKIES_SET_AFTER_REJECT",
+                      "CONSENT_MODE_GRANTED_AFTER_REJECT"],
+    "rules_absent": ["NO_TRACKING_OBSERVED_AFTER_REJECT", "CMP_NOT_OBSERVED"],
+    "status": {"TRACKING_AFTER_ACCEPT": "NOT_OBSERVED"},
+    "severity": {"TRACKING_AFTER_REJECT": "high", "TRACKING_BEFORE_CONSENT_INTERACTION": "high"}
+  },
+  "pii_key_without_value.html": {
+    "tags_exact": ["ga4"],
+    "rules_present": ["PII_KEY_PATTERN"],
+    "rules_absent": ["PII_VALUE_SENT_TO_THIRD_PARTY", "PII_VALUE_IN_DATALAYER", "PII_VALUE_IN_BROWSER_STORAGE"],
+    "status": {"PII_KEY_PATTERN": "INFERRED"}
+  },
+  "pii_runtime_value.html": {
+    "tags_exact": ["ga4", "meta_pixel"],
+    "rules_present": ["PII_VALUE_SENT_TO_THIRD_PARTY", "PII_VALUE_IN_DATALAYER", "PII_VALUE_IN_BROWSER_STORAGE",
+                      "HASHED_IDENTIFIER_SENT"],
+    "rules_absent": ["PLACEHOLDER_TAG_ID"],
+    "severity": {"PII_VALUE_SENT_TO_THIRD_PARTY": "critical"},
+    "forbidden_strings": ["maria.silva", "529.982.247-25", "52998224725",
+                          "a5b1d3c9f2e4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6"]
+  },
+  "duplicate_gtm.html": {
+    "tags_exact": ["gtm", "ga4"],
+    "rules_present": ["GTM_CONTAINER_LOADED_MULTIPLE_TIMES", "GA4_DUPLICATE_PAGE_VIEW"]
+  },
+  "ecommerce_purchase_valid.html": {
+    "tags_exact": ["ga4"],
+    "events_sent": ["purchase"],
+    "rules_absent": ["EVENT_MISSING_REQUIRED_PARAMS", "GA4_DUPLICATE_PURCHASE", "EVENT_CODE_CANDIDATES_NOT_FIRED"]
+  },
+  "ecommerce_purchase_missing_params.html": {
+    "tags_exact": ["ga4"],
+    "events_sent": ["purchase"],
+    "events_not_sent": ["add_to_cart"],
+    "code_candidates": ["add_to_cart"],
+    "rules_present": ["EVENT_MISSING_REQUIRED_PARAMS", "EVENT_CODE_CANDIDATES_NOT_FIRED"],
+    "missing_contains": ["transaction_id", "items", "currency (required when value is set)"]
+  },
+  "ssrf_subrequests.html": {
+    "tags_exact": [],
+    "rules_present": ["REQUESTS_BLOCKED_BY_SSRF_GUARD"],
+    "blocked_hosts": ["10.0.0.1", "169.254.169.254", "192.168.0.10", "127.0.0.1"]
+  }
+}

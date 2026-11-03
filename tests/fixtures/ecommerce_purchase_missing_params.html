@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Purchase missing params</title>
+<script src="/_hit.js"></script>
+<script>
+  window.addEventListener('load', function () {
+    // purchase with value but no currency, no transaction_id and no items
+    __dt.ga4('G-ECOMBAD123', 'purchase', '&epn.value=120');
+  });
+</script>
+</head><body><h1>Checkout</h1>
+<button onclick="gtag('event', 'add_to_cart', {currency: 'BRL', value: 10})">Adicionar</button>
+<a href="/privacy">Privacy</a></body></html>

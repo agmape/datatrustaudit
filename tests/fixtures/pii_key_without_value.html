@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>PII keys without values</title>
+<script src="/_hit.js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  dataLayer.push({ event: 'sign_up', method: 'email', user_email: 'not_provided', phone_number: 'anonymous', cpf: '' });
+  window.addEventListener('load', function () {
+    __dt.ga4('G-PIIKEY1234', 'sign_up', '&ep.method=email&ep.user_email=hidden');
+  });
+</script>
+</head><body><h1>Form keys only</h1>
+<form><input name="email" type="email"><input name="cpf"></form>
+<a href="/privacy">Privacy</a></body></html>

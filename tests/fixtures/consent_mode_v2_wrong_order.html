@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Consent Mode wrong order</title>
+<script src="/_hit.js"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-CMWRONG123"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-CMWRONG123');
+  // default set AFTER config, and without v2 signals
+  gtag('consent', 'default', { 'ad_storage': 'denied', 'analytics_storage': 'denied' });
+  window.addEventListener('load', function () { __dt.ga4('G-CMWRONG123', 'page_view', '', 'G111'); });
+</script>
+</head><body><h1>Consent Mode (wrong order)</h1><a href="/privacy">Privacy</a></body></html>

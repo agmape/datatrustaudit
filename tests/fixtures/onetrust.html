@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>OneTrust (misbehaving)</title>
+<script src="/_hit.js"></script>
+<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" data-domain-script="0000"></script>
+<script>
+  function OptanonWrapper() {}
+  // BAD: Meta PageView fires on load regardless of consent
+  window.addEventListener('load', function () { __dt.meta('987654321098765', 'PageView'); });
+  // BAD: after reject, GA4 still sends a hit with granted storage and _fbp is set
+  window.addEventListener('otReject', function () {
+    setTimeout(function () {
+      __dt.setCookie('_fbp', 'fb.1.111.222');
+      __dt.ga4('G-OTBAD12345', 'page_view', '', 'G111');
+    }, 200);
+  });
+</script>
+</head><body><h1>OneTrust fixture</h1><a href="/privacy-notice">Privacy Notice</a></body></html>

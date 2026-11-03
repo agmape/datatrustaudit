@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Duplicate GTM</title>
+<script src="/_hit.js"></script>
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-DUP1234');</script>
+<script>
+  // theme also hard-codes the same container
+  (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-DUP1234');
+  // and GA4 is installed twice, producing two page_view hits
+  window.addEventListener('load', function () {
+    __dt.ga4('G-DUPGA41234', 'page_view');
+    __dt.ga4('G-DUPGA41234', 'page_view');
+  });
+</script>
+</head><body><h1>Duplicate GTM</h1><a href="/privacy">Privacy</a></body></html>

@@ -1,52 +1,17 @@
-# Secrets / environment
+
+# Environment variables
 .env
 .env.local
 .env.*.local
-!.env.example
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-.venv/
-venv/
+# local scratch
+scratch_*.py
+scratch_*.json
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
+__pycache__/
+*.pyc
 
-# Node / Vite
-node_modules/
-static/node_modules/
-static/dist/
-dist/
-*.tsbuildinfo
-
-# Local databases / runtime state
-*.db
-*.sqlite
-*.sqlite3
-*.db-journal
-*.db-wal
-*.db-shm
-!db/tags.json
-
-# Logs / temporary files
-*.log
-*.err.log
-*.tmp
-*.temp
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Vercel local state
-.vercel/
-
-# Recovery / backup artifacts
-*_broken.py
-*_backup.py
-*_broken/
-$R*
+# local databases
+var/
+db/*.db
+db/*.db-*

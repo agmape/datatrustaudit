@@ -1,29 +1,14 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
-import MinimalTopMenu from "@/components/MinimalTopMenu";
+import AppHeader from "@/components/AppHeader";
 
-const NotFound = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname
-    );
-  }, [location.pathname]);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 pt-20">
-      <MinimalTopMenu />
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">404</h1>
-        <p className="text-xl text-gray-600 mb-4">Oops! Page not found</p>
-        <a href="/" className="text-blue-500 hover:text-blue-700 underline">
-          Return to Home
-        </a>
-      </div>
+const NotFound = () => (
+  <div className="dt-page min-h-screen">
+    <AppHeader />
+    <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
+      <h1 className="mb-2 text-5xl font-black dt-text-primary">404</h1>
+      <p className="mb-6 dt-text-muted">Page not found / Página não encontrada</p>
+      <a href="/" className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500">DataTrust Audit</a>
     </div>
-  );
-};
+  </div>
+);
 
 export default NotFound;

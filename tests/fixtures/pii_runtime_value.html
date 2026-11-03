@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>PII runtime values</title>
+<script src="/_hit.js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  dataLayer.push({ event: 'login', user: { email: 'maria.silva@example.com', cpf: '529.982.247-25' } });
+  localStorage.setItem('profile', JSON.stringify({ contact: 'maria.silva@example.com' }));
+  window.addEventListener('load', function () {
+    __dt.ga4('G-PIIVAL1234', 'login', '&ep.user_email=' + encodeURIComponent('maria.silva@example.com'));
+    // hashed (sha256 of an e-mail) as Meta advanced matching would send
+    __dt.meta('246813579024680', 'PageView', '&ud[em]=a5b1d3c9f2e4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6');
+  });
+</script>
+</head><body><h1>PII values</h1><a href="/privacy">Privacy</a></body></html>

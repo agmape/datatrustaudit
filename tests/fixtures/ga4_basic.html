@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>GA4 basic</title>
+<script src="/_hit.js"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-TEST12345"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-TEST12345');
+  window.addEventListener('load', function () { __dt.ga4('G-TEST12345', 'page_view'); });
+</script>
+</head><body><h1>GA4 basic</h1><a href="/privacy">Privacy policy</a></body></html>

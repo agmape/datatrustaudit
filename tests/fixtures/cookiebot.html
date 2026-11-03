@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Cookiebot (well-behaved)</title>
+<script src="/_hit.js"></script>
+<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js" data-cbid="00000000-0000-0000-0000-000000000000"></script>
+<script>
+  // Tracking only after acceptance (correct gating)
+  window.addEventListener('CookiebotOnAccept', function () {
+    __dt.setCookie('_ga', 'GA1.1.111.222');
+    __dt.ga4('G-CBGOOD1234', 'page_view');
+  });
+</script>
+</head><body><h1>Cookiebot fixture</h1><a href="/politica-de-cookies">Política de Cookies</a></body></html>
