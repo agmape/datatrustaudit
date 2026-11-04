@@ -32,9 +32,12 @@ _SessionLocal: Optional[sessionmaker] = None
 
 
 def database_url() -> str:
-    url = os.getenv("DATABASE_URL", "").strip()
+    url = os.getenv("DATABASE_URL", "").strip().strip('"').strip("'")
     if not url:
         url = "sqlite:///var/datatrust.db"
+    # Supabase/Railway hand out "postgresql://" or "postgres://"; SQLAlchemy would then look for
+    # psycopg2, which is not installed. Use the psycopg (v3) driver the image ships with.
+    url = re.sub(r"^postgres(?:ql)?://", "postgresql+psycopg://", url)
     return url
 
 
