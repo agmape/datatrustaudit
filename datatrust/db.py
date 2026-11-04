@@ -75,6 +75,9 @@ def make_engine(url: Optional[str] = None) -> Engine:
         if ":memory:" in url or url.endswith("sqlite://"):
             from sqlalchemy.pool import StaticPool
             kwargs["poolclass"] = StaticPool
+    elif url.startswith("postgresql"):
+        # never hang forever on an unreachable database (fail fast and log the reason)
+        kwargs["connect_args"] = {"connect_timeout": 10}
     try:
         eng = create_engine(url, **kwargs)
     except Exception as exc:
