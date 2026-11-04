@@ -38,7 +38,22 @@ def database_url() -> str:
     # Supabase/Railway hand out "postgresql://" or "postgres://"; SQLAlchemy would then look for
     # psycopg2, which is not installed. Use the psycopg (v3) driver the image ships with.
     url = re.sub(r"^postgres(?:ql)?://", "postgresql+psycopg://", url)
+    if url.startswith("postgresql"):
+        url = _encode_password(url)
     return url
+
+
+def _encode_password(url: str) -> str:
+    """Percent-encode the password of scheme://user:password@host/db so passwords containing
+    @ # / ? : % work. The host part is everything after the LAST '@'. Already-encoded passwords
+    are left as they are."""
+    from urllib.parse import quote, unquote
+    m = re.match(r"^([a-z0-9+]+://)([^:/@]+):(.*)@([^@]+)$", url, re.S)
+    if not m:
+        return url
+    scheme, user, pwd, rest = m.groups()
+    pwd = pwd.strip("[]") if pwd.startswith("[") and pwd.endswith("]") else pwd
+    return f"{scheme}{user}:{quote(unquote(pwd), safe='')}@{rest}"
 
 
 def _prepare_sqlite_path(url: str) -> str:
@@ -60,7 +75,14 @@ def make_engine(url: Optional[str] = None) -> Engine:
         if ":memory:" in url or url.endswith("sqlite://"):
             from sqlalchemy.pool import StaticPool
             kwargs["poolclass"] = StaticPool
-    eng = create_engine(url, **kwargs)
+    try:
+        eng = create_engine(url, **kwargs)
+    except Exception as exc:
+        shape = re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", url)[:120]
+        raise RuntimeError(
+            "DATABASE_URL inválida. Formato esperado: "
+            "postgresql://postgres.<projeto>:<senha>@<host>.pooler.supabase.com:5432/postgres "
+            f"(recebido, senha oculta: {shape!r})") from exc
     if url.startswith("sqlite"):
         @event.listens_for(eng, "connect")
         def _pragma(dbapi_conn, _rec):  # pragma: no cover - trivial
